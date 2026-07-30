@@ -4,7 +4,7 @@
 
 static int waiter_func(void *arg)
 {
-  _Atomic(int) *value = (_Atomic(int) *)arg;
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *value = (WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *)arg;
   int expected = 0;
   WG14_ATOMIC_WAITS_PREFIX(atomic_wait)(value, expected);
   return *value;
@@ -12,7 +12,7 @@ static int waiter_func(void *arg)
 
 static int waiter_explicit_func(void *arg)
 {
-  _Atomic(int) *value = (_Atomic(int) *)arg;
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *value = (WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *)arg;
   int expected = 0;
   WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit)(value, expected, memory_order_seq_cst);
   return *value;
@@ -21,7 +21,7 @@ static int waiter_explicit_func(void *arg)
 int atomic_wait_test(void)
 {
   int ret = 0;
-  _Atomic int value = 0;
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int value = 0;
 
   thrd_t thr;
   CHECK(thrd_create(&thr, waiter_func, &value) == thrd_success);
@@ -50,4 +50,9 @@ int atomic_wait_test(void)
   CHECK(result2 == 42);
 
   return ret;
+}
+
+int main(void)
+{
+  return atomic_wait_test();
 }

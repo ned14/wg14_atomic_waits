@@ -17,6 +17,7 @@ else()
   target_compile_options(header_only_test PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 target_compile_features(header_only_test PRIVATE c_std_11 cxx_std_20)
+target_link_libraries(header_only_test PRIVATE ${PROJECT_NAME})
 set_target_properties(header_only_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY
                       "${CMAKE_BINARY_DIR}/bin")
 add_test(NAME header_only_test COMMAND $<TARGET_FILE:header_only_test>)

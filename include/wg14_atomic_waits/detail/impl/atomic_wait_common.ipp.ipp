@@ -1,52 +1,60 @@
 /* Proposed WG14 atomic wait/notify support
-   (C) 2026 Niall Douglas <http://www.nedproductions.biz/>
-   File Created: Jul 2026
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License in the accompanying file
-   Licence.txt or at
+(C) 2026 Niall Douglas <http://www.nedproductions.biz/>
+File Created: Jul 2026
 
-   http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License in the accompanying file
+Licence.txt or at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 */
 
 #include "../../atomic_wait.h"
-#include "../../config.h"
-#include "lock_unlock.h"
+
 #include <assert.h>
-#include <stddef.h>
+#include <errno.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#ifndef _WIN32
-#include <errno.h>
-#include <pthread.h>
-#include <time.h>
+
+#ifndef WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE
+#if !WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32
+#error                                                                         \
+"If WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE is not defined, then WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32 must be."
+#endif
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE                           \
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_INIT(x) (0)
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_DESTROY(x) (0)
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(x, timeout)          \
+  WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(&(x)->atomic, 0, (timeout))
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAKE(x,                   \
+                                                          max_threads_to_wake) \
+  (                                                                            \
+  atomic_store_explicit(&(x)->atomic, 1,                                       \
+                        WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release), \
+  WG14_ATOMIC_WAITS_PREFIX(wake_by_address32)(&(x)->atomic,                    \
+                                              (max_threads_to_wake)))
+#endif
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-  typedef struct WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_s)
-  {
-    struct WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_s) * next;
-    volatile int notified;
-    pthread_cond_t cv;
-    pthread_mutex_t mtx;
-    uint8_t expected_storage[8];
-  } WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t);
-
   typedef struct
   {
-    WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) * head;
-    WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) * tail;
-  } WG14_ATOMIC_WAITS_PREFIX(wait_queue_t);
+    int use_count;
+    WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE atomic;
+  } WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t);
 
 #define WG14_ATOMIC_WAITS_HASH_BUCKETS_INITIAL 1024
 #define WG14_ATOMIC_WAITS_HASH_BUCKETS_MAX (1024 * 1024)
@@ -54,7 +62,8 @@ extern "C"
 
   typedef struct
   {
-    WG14_ATOMIC_WAITS_PREFIX(wait_queue_t) queue;
+    // proxy must not move in memory after creation
+    WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) * proxy;
     void *key;
   } WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t);
 
@@ -62,59 +71,88 @@ extern "C"
   {
     WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) * buckets;
     unsigned bucket_count;
-    unsigned lock;
+    WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_flag lock;
   } WG14_ATOMIC_WAITS_PREFIX(hash_table_t);
 
-  static WG14_ATOMIC_WAITS_INLINE WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *
+  // There must be exactly one of these in the whole process
+  WG14_ATOMIC_WAITS_EXTERN_IMPL
+  WG14_ATOMIC_WAITS_IGNORE_MULTIPLE_DEFINITIONS
+  WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *
   WG14_ATOMIC_WAITS_PREFIX(hash_table)(void)
   {
     static WG14_ATOMIC_WAITS_PREFIX(hash_table_t) table;
     return &table;
   }
 
-  static WG14_ATOMIC_WAITS_INLINE unsigned
-  WG14_ATOMIC_WAITS_PREFIX(hash_func)(const void *key, unsigned mask)
+  static WG14_ATOMIC_WAITS_INLINE void
+  WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(hash_table_t *table)
   {
-    uintptr_t h = (uintptr_t) key;
-    h = ((h >> 3) ^ (h >> (3 + 4))) * 0x9E3779B9u;
-    return (unsigned) h & mask;
+    for(;;)
+    {
+      if(atomic_flag_test_and_set_explicit(
+         &table->lock, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_acquire) ==
+         false)
+      {
+        return;
+      }
+    }
   }
 
-  static WG14_ATOMIC_WAITS_INLINE void *
-  WG14_ATOMIC_WAITS_PREFIX(volatile_to_voidp)(const volatile void *p)
+  static WG14_ATOMIC_WAITS_INLINE void
+  WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(hash_table_t *table)
   {
-    return (void *) (uintptr_t) p;
+    atomic_flag_clear_explicit(
+    &table->lock, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release);
+  }
+
+  static WG14_ATOMIC_WAITS_INLINE unsigned
+  WG14_ATOMIC_WAITS_PREFIX(hash_func)(const void *key)
+  {
+    const unsigned h = (unsigned) (uintptr_t) key;
+    return (h ^ 2166136261U) * 16777619U;
   }
 
   static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(hash_table_grow)(
   WG14_ATOMIC_WAITS_PREFIX(hash_table_t) * table)
   {
-    unsigned old_count = table->bucket_count;
+    const unsigned old_count = table->bucket_count;
     unsigned new_count = old_count * 2;
     if(new_count > WG14_ATOMIC_WAITS_HASH_BUCKETS_MAX)
+    {
       new_count = WG14_ATOMIC_WAITS_HASH_BUCKETS_MAX;
+    }
     if(new_count <= old_count)
+    {
+      errno = ENOMEM;
       return -1;
-    WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *new_buckets =
+    }
+    WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *const new_buckets =
     (WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *) calloc(
     new_count, sizeof(WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t)));
-    if(!new_buckets)
+    if(new_buckets == WG14_ATOMIC_WAITS_NULLPTR)
+    {
+      // errno already set
       return -1;
-    unsigned mask = new_count - 1;
+    }
+    const unsigned mask = new_count - 1;
     for(unsigned i = 0; i < old_count; i++)
     {
-      WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *old_bucket = &table->buckets[i];
-      if(old_bucket->key == NULL)
+      WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *const old_bucket =
+      &table->buckets[i];
+      if(old_bucket->key == WG14_ATOMIC_WAITS_NULLPTR)
+      {
         continue;
-      unsigned h = WG14_ATOMIC_WAITS_PREFIX(hash_func)(old_bucket->key, mask);
+      }
+      const unsigned h =
+      WG14_ATOMIC_WAITS_PREFIX(hash_func)(old_bucket->key) & mask;
       for(unsigned step = 0; step < new_count; step++)
       {
-        unsigned idx = (h + step * step) & mask;
-        WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *new_bucket = &new_buckets[idx];
-        if(new_bucket->key == NULL)
+        const unsigned idx = (h + step * step) & mask;
+        WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *const new_bucket =
+        &new_buckets[idx];
+        if(new_bucket->key == WG14_ATOMIC_WAITS_NULLPTR)
         {
-          new_bucket->key = old_bucket->key;
-          new_bucket->queue = old_bucket->queue;
+          *new_bucket = *old_bucket;
           break;
         }
       }
@@ -125,256 +163,141 @@ extern "C"
     return 0;
   }
 
-  static WG14_ATOMIC_WAITS_INLINE WG14_ATOMIC_WAITS_PREFIX(wait_queue_t) *
+  static WG14_ATOMIC_WAITS_INLINE WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *
   WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(
-  const volatile void *object)
+  const volatile void *object, bool increment_use_count)
   {
-    WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *table =
+    WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
     WG14_ATOMIC_WAITS_PREFIX(hash_table)();
-    void *key = WG14_ATOMIC_WAITS_PREFIX(volatile_to_voidp)(object);
+    void *const key = (void *) object;
 
-    LOCK(table->lock);
-    if(table->buckets == NULL)
+    WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
+    if(table->buckets == WG14_ATOMIC_WAITS_NULLPTR)
     {
       table->buckets = (WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *) calloc(
       WG14_ATOMIC_WAITS_HASH_BUCKETS_INITIAL,
       sizeof(WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t)));
       table->bucket_count = WG14_ATOMIC_WAITS_HASH_BUCKETS_INITIAL;
-      if(!table->buckets)
+      if(table->buckets == WG14_ATOMIC_WAITS_NULLPTR)
       {
-        UNLOCK(table->lock);
-        return NULL;
+        // out of memory
+        WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+        return WG14_ATOMIC_WAITS_NULLPTR;
       }
     }
     for(;;)
     {
-      unsigned h =
-      WG14_ATOMIC_WAITS_PREFIX(hash_func)(key, table->bucket_count - 1);
+      const unsigned h =
+      WG14_ATOMIC_WAITS_PREFIX(hash_func)(key) & (table->bucket_count - 1);
       for(unsigned step = 0; step < table->bucket_count; step++)
       {
-        unsigned idx = (h + step * step) & (table->bucket_count - 1);
+        const unsigned idx = (h + step * step) & (table->bucket_count - 1);
         WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *bucket = &table->buckets[idx];
-        if(bucket->key == NULL)
+        if(bucket->key == WG14_ATOMIC_WAITS_NULLPTR)
         {
+          if(!increment_use_count)
+          {
+            // not found
+            WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+            return WG14_ATOMIC_WAITS_NULLPTR;
+          }
+          bucket->proxy = (WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *) calloc(
+          1, sizeof(proxy_waiter_t));
+          if(bucket->proxy == WG14_ATOMIC_WAITS_NULLPTR)
+          {
+            // out of memory
+            WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+            return WG14_ATOMIC_WAITS_NULLPTR;
+          }
+          const int ret =
+          WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_INIT(bucket->proxy);
+          if(ret != 0)
+          {
+            // custom init failed
+            free(bucket->proxy);
+            bucket->proxy = WG14_ATOMIC_WAITS_NULLPTR;
+            WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+            return WG14_ATOMIC_WAITS_NULLPTR;
+          }
           bucket->key = key;
-          memset(&bucket->queue, 0, sizeof(bucket->queue));
-          UNLOCK(table->lock);
-          return &bucket->queue;
+          // found
+          bucket->proxy->use_count = 1;
+          WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+          return bucket->proxy;
         }
         if(bucket->key == key)
         {
-          UNLOCK(table->lock);
-          return &bucket->queue;
+          // found
+          if(increment_use_count)
+          {
+            bucket->proxy->use_count++;
+          }
+          WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+          return bucket->proxy;
         }
       }
       if(WG14_ATOMIC_WAITS_PREFIX(hash_table_grow)(table) != 0)
-        break;
-    }
-    UNLOCK(table->lock);
-    return NULL;
-  }
-
-  static WG14_ATOMIC_WAITS_INLINE void WG14_ATOMIC_WAITS_PREFIX(wq_append)(
-  WG14_ATOMIC_WAITS_PREFIX(wait_queue_t) * queue,
-  WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) * item)
-  {
-    item->next = NULL;
-    if(queue->tail)
-      queue->tail->next = item;
-    else
-      queue->head = item;
-    queue->tail = item;
-  }
-
-  static WG14_ATOMIC_WAITS_INLINE void WG14_ATOMIC_WAITS_PREFIX(wq_remove)(
-  WG14_ATOMIC_WAITS_PREFIX(wait_queue_t) * queue,
-  WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) * item)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) **p = &queue->head;
-    while(*p)
-    {
-      if(*p == item)
       {
-        *p = item->next;
-        if(queue->tail == item)
-          queue->tail = NULL;
-        item->next = NULL;
-        return;
+        // out of memory or hit maximum size limit
+        WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+        return WG14_ATOMIC_WAITS_NULLPTR;
       }
-      p = &(*p)->next;
     }
   }
 
-  static WG14_ATOMIC_WAITS_INLINE WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) *
-  WG14_ATOMIC_WAITS_PREFIX(wq_item_new)(const void *expected, size_t size)
+  // MUST HOLD THE LOCK ON ENTRY
+  static void WG14_ATOMIC_WAITS_PREFIX(hash_table_remove_item)(
+  WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table,
+  const volatile void *object)
   {
-    WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) *item =
-    (WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) *) malloc(sizeof(*item));
-    if(!item)
-      return NULL;
-    memset(item, 0, sizeof(*item));
-    memcpy(item->expected_storage, expected, size);
-    pthread_cond_init(&item->cv, NULL);
-    pthread_mutex_init(&item->mtx, NULL);
-    return item;
-  }
-
-  static WG14_ATOMIC_WAITS_INLINE void WG14_ATOMIC_WAITS_PREFIX(wq_item_delete)(
-  WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) * item)
-  {
-    if(!item)
+    void *const key = (void *) object;
+    if(table->buckets == WG14_ATOMIC_WAITS_NULLPTR)
+    {
       return;
-    pthread_cond_destroy(&item->cv);
-    pthread_mutex_destroy(&item->mtx);
-    free(item);
-  }
-
-  static WG14_ATOMIC_WAITS_INLINE unsigned WG14_ATOMIC_WAITS_PREFIX(
-  wake_waiters)(WG14_ATOMIC_WAITS_PREFIX(wait_queue_t) * queue, unsigned max)
-  {
-    unsigned count = 0;
-    WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) *item = queue->head;
-
-    while(item && count < max)
-    {
-      if(!item->notified)
-      {
-        item->notified = 1;
-        pthread_cond_signal(&item->cv);
-        count++;
-      }
-      item = item->next;
     }
-    return count;
-  }
-
-  static WG14_ATOMIC_WAITS_INLINE uint64_t
-  WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(const volatile void *object,
-                                             size_t size, memory_order order)
-  {
-    if(size == 1)
-      return (uint64_t) atomic_load_explicit(
-      (const volatile _Atomic(uint_least8_t) *) object,
-      WG14_ATOMIC_WAITS_ATOMIC_PREFIX order);
-    if(size == 2)
-      return (uint64_t) atomic_load_explicit(
-      (const volatile _Atomic(uint_least16_t) *) object,
-      WG14_ATOMIC_WAITS_ATOMIC_PREFIX order);
-    if(size == 4)
-      return (uint64_t) atomic_load_explicit(
-      (const volatile _Atomic(uint_least32_t) *) object,
-      WG14_ATOMIC_WAITS_ATOMIC_PREFIX order);
-    return atomic_load_explicit(
-    (const volatile _Atomic(uint_least64_t) *) object,
-    WG14_ATOMIC_WAITS_ATOMIC_PREFIX order);
-  }
-
-  static WG14_ATOMIC_WAITS_INLINE void
-  WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(const volatile void *object,
-                                                size_t size, uint64_t expected,
-                                                memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *htable =
-    WG14_ATOMIC_WAITS_PREFIX(hash_table)();
-
-    for(;;)
+    const unsigned h =
+    WG14_ATOMIC_WAITS_PREFIX(hash_func)(key) & (table->bucket_count - 1);
+    for(unsigned step = 0; step < table->bucket_count; step++)
     {
-      uint64_t current = WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(
-      (const volatile void *) object, size, order);
-      if(current != expected)
-        return;
-
-      WG14_ATOMIC_WAITS_PREFIX(wait_queue_t) *queue =
-      WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(object);
-      if(!queue)
-        return;
-
-      WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) *item =
-      WG14_ATOMIC_WAITS_PREFIX(wq_item_new)(&expected, size);
-      if(!item)
-        return;
-
-      for(;;)
+      const unsigned idx = (h + step * step) & (table->bucket_count - 1);
+      WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *bucket = &table->buckets[idx];
+      if(bucket->key == key)
       {
-        uint64_t cur = WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(
-        (const volatile void *) object, size, order);
-        if(cur != expected)
+        // found
+        assert(bucket->proxy->use_count == 0);
+        const int ret =
+        WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_DESTROY(bucket->proxy);
+        if(ret != 0)
         {
-          WG14_ATOMIC_WAITS_PREFIX(wq_item_delete)(item);
-          return;
+          abort();
         }
-
-        LOCK(htable->lock);
-        WG14_ATOMIC_WAITS_PREFIX(wq_append)(queue, item);
-        uint64_t cur2 = WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(
-        (const volatile void *) object, size, order);
-        if(cur2 != expected)
+        free(bucket->proxy);
+        for(step++; step < table->bucket_count; step++)
         {
-          WG14_ATOMIC_WAITS_PREFIX(wq_remove)(queue, item);
-          UNLOCK(htable->lock);
-          WG14_ATOMIC_WAITS_PREFIX(wq_item_delete)(item);
-          return;
+          const unsigned idx = (h + step * step) & (table->bucket_count - 1);
+          WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *next_bucket =
+          &table->buckets[idx];
+          if(next_bucket->key != WG14_ATOMIC_WAITS_NULLPTR)
+          {
+            *bucket = *next_bucket;
+            bucket = next_bucket;
+          }
         }
-        UNLOCK(htable->lock);
-        break;
+        return;
       }
-
-      pthread_mutex_lock(&item->mtx);
-      while(!item->notified)
-      {
-        uint64_t cur = WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(
-        (const volatile void *) object, size, order);
-        if(cur != expected)
-          break;
-        struct timespec ts;
-        ts.tv_sec = 5;
-        ts.tv_nsec = 0;
-        pthread_cond_timedwait(&item->cv, &item->mtx, &ts);
-      }
-      pthread_mutex_unlock(&item->mtx);
-
-      LOCK(htable->lock);
-      WG14_ATOMIC_WAITS_PREFIX(wq_remove)(queue, item);
-      UNLOCK(htable->lock);
-
-      WG14_ATOMIC_WAITS_PREFIX(wq_item_delete)(item);
     }
   }
 
-  static WG14_ATOMIC_WAITS_INLINE void
-  WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(volatile void *object,
-                                                  size_t size,
-                                                  unsigned max_threads_to_wake)
-  {
-    (void) size;
-    if(max_threads_to_wake == 0)
-      return;
-
-    WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *htable =
-    WG14_ATOMIC_WAITS_PREFIX(hash_table)();
-
-    LOCK(htable->lock);
-    WG14_ATOMIC_WAITS_PREFIX(wait_queue_t) *queue = WG14_ATOMIC_WAITS_PREFIX(
-    hash_table_find_or_create)((const void *) (uintptr_t) object);
-    if(queue)
-    {
-      unsigned count =
-      WG14_ATOMIC_WAITS_PREFIX(wake_waiters)(queue, max_threads_to_wake);
-      (void) count;
-    }
-    UNLOCK(htable->lock);
-  }
 
   static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(
-  atomic_wait_expected_generic)(const volatile void *object, size_t size,
-                                void *expected, const struct timespec *duration,
-                                memory_order success, memory_order failure)
+  atomic_wait_generic)(const volatile void *object, size_t bytes,
+                       void *expected, const struct timespec *duration,
+                       WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order success,
+                       WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order failure)
   {
-    WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *htable =
-    WG14_ATOMIC_WAITS_PREFIX(hash_table)();
+    int ret = 0;
     struct timespec end;
-
-    if(duration)
+    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
     {
       struct timespec now;
       clock_gettime(CLOCK_MONOTONIC, &now);
@@ -386,185 +309,348 @@ extern "C"
         end.tv_nsec -= 1000000000;
       }
     }
-
+    WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order = failure;
+    WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *item = WG14_ATOMIC_WAITS_NULLPTR;
     for(;;)
     {
-      uint64_t current =
-      WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(object, size, failure);
-      uint64_t exp_u64;
-      if(size == 1)
-        exp_u64 = (uint64_t) *(const volatile uint_least8_t *) expected;
-      else if(size == 2)
-        exp_u64 = (uint64_t) *(const volatile uint_least16_t *) expected;
-      else if(size == 4)
-        exp_u64 = (uint64_t) *(const volatile uint_least32_t *) expected;
-      else
-        exp_u64 = *(const volatile uint_least64_t *) expected;
-
-      if(current != exp_u64)
+      uint8_t current[8];
+      switch(bytes)
       {
-        if(size == 1)
-          *(volatile uint_least8_t *) expected = (uint_least8_t) current;
-        else if(size == 2)
-          *(volatile uint_least16_t *) expected = (uint_least16_t) current;
-        else if(size == 4)
-          *(volatile uint_least32_t *) expected = (uint_least32_t) current;
-        else
-          *(volatile uint_least64_t *) expected = (uint_least64_t) current;
-        atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX success);
-        return 0;
-      }
-
-      WG14_ATOMIC_WAITS_PREFIX(wait_queue_t) *queue =
-      WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(object);
-      if(!queue)
-        return -1;
-
-      WG14_ATOMIC_WAITS_PREFIX(wait_queue_item_t) *item =
-      WG14_ATOMIC_WAITS_PREFIX(wq_item_new)(expected, size);
-      if(!item)
-        return -1;
-
-      for(;;)
+      case 1:
       {
-        uint64_t cur =
-        WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(object, size, failure);
-        if(cur != exp_u64)
-        {
-          WG14_ATOMIC_WAITS_PREFIX(wq_item_delete)(item);
-          if(size == 1)
-            *(volatile uint_least8_t *) expected = (uint_least8_t) cur;
-          else if(size == 2)
-            *(volatile uint_least16_t *) expected = (uint_least16_t) cur;
-          else if(size == 4)
-            *(volatile uint_least32_t *) expected = (uint_least32_t) cur;
-          else
-            *(volatile uint_least64_t *) expected = (uint_least64_t) cur;
-          atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX success);
-          return 0;
-        }
-
-        LOCK(htable->lock);
-        WG14_ATOMIC_WAITS_PREFIX(wq_append)(queue, item);
-        uint64_t cur2 =
-        WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(object, size, failure);
-        if(cur2 != exp_u64)
-        {
-          WG14_ATOMIC_WAITS_PREFIX(wq_remove)(queue, item);
-          UNLOCK(htable->lock);
-          WG14_ATOMIC_WAITS_PREFIX(wq_item_delete)(item);
-          if(size == 1)
-            *(volatile uint_least8_t *) expected = (uint_least8_t) cur2;
-          else if(size == 2)
-            *(volatile uint_least16_t *) expected = (uint_least16_t) cur2;
-          else if(size == 4)
-            *(volatile uint_least32_t *) expected = (uint_least32_t) cur2;
-          else
-            *(volatile uint_least64_t *) expected = (uint_least64_t) cur2;
-          atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX success);
-          return 0;
-        }
-        UNLOCK(htable->lock);
+        const uint8_t v =
+        atomic_load_explicit((const atomic_uint_least8_t *) object, order);
+        memcpy(current, &v, 1);
         break;
       }
-
-      pthread_mutex_lock(&item->mtx);
-      int timedout = 0;
-      if(duration)
+      case 2:
       {
-        for(;;)
-        {
-          struct timespec now;
-          clock_gettime(CLOCK_MONOTONIC, &now);
-          if(now.tv_sec > end.tv_sec ||
-             (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
-          {
-            timedout = 1;
-            break;
-          }
-          struct timespec remaining;
-          remaining.tv_sec = end.tv_sec - now.tv_sec;
-          if(end.tv_nsec >= now.tv_nsec)
-            remaining.tv_nsec = end.tv_nsec - now.tv_nsec;
-          else
-          {
-            remaining.tv_sec--;
-            remaining.tv_nsec = end.tv_nsec - now.tv_nsec + 1000000000;
-          }
-          uint64_t cur =
-          WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(object, size, failure);
-          if(cur != exp_u64)
-          {
-            pthread_mutex_unlock(&item->mtx);
-            WG14_ATOMIC_WAITS_PREFIX(wq_item_delete)(item);
-            if(size == 1)
-              *(volatile uint_least8_t *) expected = (uint_least8_t) cur;
-            else if(size == 2)
-              *(volatile uint_least16_t *) expected = (uint_least16_t) cur;
-            else if(size == 4)
-              *(volatile uint_least32_t *) expected = (uint_least32_t) cur;
-            else
-              *(volatile uint_least64_t *) expected = (uint_least64_t) cur;
-            atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX success);
-            return 1;
-          }
-          if(!item->notified &&
-             pthread_cond_timedwait(&item->cv, &item->mtx, &remaining) == 0)
-            break;
-        }
+        const uint16_t v =
+        atomic_load_explicit((const atomic_uint_least16_t *) object, order);
+        memcpy(current, &v, 1);
+        break;
       }
-      else
+      case 4:
       {
-        for(;;)
-        {
-          uint64_t cur =
-          WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(object, size, failure);
-          if(cur != exp_u64)
-          {
-            pthread_mutex_unlock(&item->mtx);
-            WG14_ATOMIC_WAITS_PREFIX(wq_item_delete)(item);
-            if(size == 1)
-              *(volatile uint_least8_t *) expected = (uint_least8_t) cur;
-            else if(size == 2)
-              *(volatile uint_least16_t *) expected = (uint_least16_t) cur;
-            else if(size == 4)
-              *(volatile uint_least32_t *) expected = (uint_least32_t) cur;
-            else
-              *(volatile uint_least64_t *) expected = (uint_least64_t) cur;
-            atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX success);
-            return 1;
-          }
-          pthread_cond_wait(&item->cv, &item->mtx);
-        }
+        const uint32_t v =
+        atomic_load_explicit((const atomic_uint_least32_t *) object, order);
+        memcpy(current, &v, 1);
+        break;
       }
-      pthread_mutex_unlock(&item->mtx);
-
-      LOCK(htable->lock);
-      WG14_ATOMIC_WAITS_PREFIX(wq_remove)(queue, item);
-      UNLOCK(htable->lock);
-
-      if(timedout)
+      case 8:
       {
-        WG14_ATOMIC_WAITS_PREFIX(wq_item_delete)(item);
-        uint64_t cur =
-        WG14_ATOMIC_WAITS_PREFIX(atomic_load_uint)(object, size, failure);
-        if(size == 1)
-          *(volatile uint_least8_t *) expected = (uint_least8_t) cur;
-        else if(size == 2)
-          *(volatile uint_least16_t *) expected = (uint_least16_t) cur;
-        else if(size == 4)
-          *(volatile uint_least32_t *) expected = (uint_least32_t) cur;
+        const uint64_t v =
+        atomic_load_explicit((const atomic_uint_least64_t *) object, order);
+        memcpy(current, &v, 1);
+        break;
+      }
+      default:
+        abort();
+      }
+      if(memcmp(current, expected, bytes) != 0)
+      {
+        // We have successfully been woken
+        memcpy(expected, current, bytes);
+        break;
+      }
+      item = WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(object, true);
+      if(item == WG14_ATOMIC_WAITS_NULLPTR)
+      {
+        return -1;
+      }
+      ret = 1;
+
+      struct timespec ts_remaining;
+      if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+      {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if(now.tv_sec > end.tv_sec ||
+           (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
+        {
+          errno = ETIMEDOUT;
+          return 0;
+        }
+        ts_remaining.tv_sec = end.tv_sec - now.tv_sec;
+        if(end.tv_nsec >= now.tv_nsec)
+          ts_remaining.tv_nsec = end.tv_nsec - now.tv_nsec;
         else
-          *(volatile uint_least64_t *) expected = (uint_least64_t) cur;
-        atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX failure);
-        return 0;
+        {
+          ts_remaining.tv_sec--;
+          ts_remaining.tv_nsec = end.tv_nsec - now.tv_nsec + 1000000000;
+        }
       }
-
-      WG14_ATOMIC_WAITS_PREFIX(wq_item_delete)(item);
+      const int ret2 = WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(
+      item, (duration != WG14_ATOMIC_WAITS_NULLPTR) ?
+            &ts_remaining :
+            WG14_ATOMIC_WAITS_NULLPTR);
+      if(ret2 < 0)
+      {
+        return ret2;
+      }
+      order = success;
     }
+    if(item != WG14_ATOMIC_WAITS_NULLPTR)
+    {
+      // Decrement the use count, and if we are the last waiter delete ourselves
+      WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
+      WG14_ATOMIC_WAITS_PREFIX(hash_table)();
+      WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
+      if(0 == --item->use_count)
+      {
+        WG14_ATOMIC_WAITS_PREFIX(hash_table_remove_item)(table, object);
+      }
+      WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+    }
+    return ret;
+  }
+
+  static WG14_ATOMIC_WAITS_INLINE int
+  WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(volatile void *object,
+                                                  unsigned max_threads_to_wake)
+  {
+    WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *const item =
+    WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(object, false);
+    if(item == WG14_ATOMIC_WAITS_NULLPTR)
+    {
+      // Nothing to wake
+      return 0;
+    }
+    return WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAKE(
+    item, max_threads_to_wake);
+  }
+
+  /************************ External API ********************************/
+
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_1)(
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object,
+  uint_least8_t expected, memory_order order)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_8
+    while(atomic_load_explicit(object, order) == expected)
+    {
+      (void) WG14_ATOMIC_WAITS_PREFIX(
+      wait_on_address8(object, expected, WG14_ATOMIC_WAITS_NULLPTR));
+    }
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
+  object, 1, &expected, WG14_ATOMIC_WAITS_NULLPTR, order, order);
+#endif
+  }
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_2)(
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object,
+  uint_least16_t expected, memory_order order)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_16
+    while(atomic_load_explicit(object, order) == expected)
+    {
+      (void) WG14_ATOMIC_WAITS_PREFIX(
+      wait_on_address16(object, expected, WG14_ATOMIC_WAITS_NULLPTR));
+    }
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
+  object, 2, &expected, WG14_ATOMIC_WAITS_NULLPTR, order, order);
+#endif
+  }
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
+  uint_least32_t expected, memory_order order)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32
+    while(atomic_load_explicit(object, order) == expected)
+    {
+      (void) WG14_ATOMIC_WAITS_PREFIX(
+      wait_on_address32(object, expected, WG14_ATOMIC_WAITS_NULLPTR));
+    }
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
+  object, 4, &expected, WG14_ATOMIC_WAITS_NULLPTR, order, order);
+#endif
+  }
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_8)(
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
+  uint_least64_t expected, memory_order order)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_8
+    while(atomic_load_explicit(object, order) == expected)
+    {
+      (void) WG14_ATOMIC_WAITS_PREFIX(
+      wait_on_address64(object, expected, WG14_ATOMIC_WAITS_NULLPTR));
+    }
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
+  object, 8, &expected, WG14_ATOMIC_WAITS_NULLPTR, order, order);
+#endif
+  }
+
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_1)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_8
+    (void) WG14_ATOMIC_WAITS_PREFIX(wake_by_address8)(object, 1);
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(object, 1);
+#endif
+  }
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_2)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_16
+    (void) WG14_ATOMIC_WAITS_PREFIX(wake_by_address16)(object, 1);
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(object, 1);
+#endif
+  }
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_4)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_32
+    (void) WG14_ATOMIC_WAITS_PREFIX(wake_by_address32)(object, 1);
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(object, 1);
+#endif
+  }
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_8)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_64
+    (void) WG14_ATOMIC_WAITS_PREFIX(wake_by_address64)(object, 1);
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(object, 1);
+#endif
+  }
+
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_1)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_8
+    (void) WG14_ATOMIC_WAITS_PREFIX(wake_by_address8)(object, (unsigned) -1);
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(object, (unsigned) -1);
+#endif
+  }
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_2)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_16
+    (void) WG14_ATOMIC_WAITS_PREFIX(wake_by_address16)(object, (unsigned) -1);
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(object, (unsigned) -1);
+#endif
+  }
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_4)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_32
+    (void) WG14_ATOMIC_WAITS_PREFIX(wake_by_address32)(object, (unsigned) -1);
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(object, (unsigned) -1);
+#endif
+  }
+  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_8)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_64
+    (void) WG14_ATOMIC_WAITS_PREFIX(wake_by_address64)(object, (unsigned) -1);
+#else
+  (void) WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(object, (unsigned) -1);
+#endif
+  }
+
+  int WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected_32)(
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t
+  *restrict object,
+  uint_least32_t *restrict expected, const struct timespec *restrict duration,
+  memory_order success, memory_order failure)
+  {
+#if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32
+    int ret = 0;
+    struct timespec end;
+    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+    {
+      struct timespec now;
+      clock_gettime(CLOCK_MONOTONIC, &now);
+      end.tv_sec = now.tv_sec + duration->tv_sec;
+      end.tv_nsec = now.tv_nsec + duration->tv_nsec;
+      if(end.tv_nsec >= 1000000000)
+      {
+        end.tv_sec++;
+        end.tv_nsec -= 1000000000;
+      }
+    }
+    WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order = failure;
+    for(;;)
+    {
+      const uint_least32_t current = atomic_load_explicit(object, order);
+      if(current != *expected)
+      {
+        *expected = current;
+        return ret;
+      }
+      ret = 1;
+
+      struct timespec ts_remaining;
+      if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+      {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if(now.tv_sec > end.tv_sec ||
+           (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
+        {
+          errno = ETIMEDOUT;
+          return 0;
+        }
+        ts_remaining.tv_sec = end.tv_sec - now.tv_sec;
+        if(end.tv_nsec >= now.tv_nsec)
+          ts_remaining.tv_nsec = end.tv_nsec - now.tv_nsec;
+        else
+        {
+          ts_remaining.tv_sec--;
+          ts_remaining.tv_nsec = end.tv_nsec - now.tv_nsec + 1000000000;
+        }
+      }
+      const int ret2 = WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(
+      object, *expected,
+      (duration != WG14_ATOMIC_WAITS_NULLPTR) ? &ts_remaining :
+                                                WG14_ATOMIC_WAITS_NULLPTR);
+      if(ret2 < 0)
+      {
+        if(duration != WG14_ATOMIC_WAITS_NULLPTR && ret2 != ETIME &&
+           ret2 != ETIMEDOUT)
+        {
+          errno = -ret2;
+          return -1;
+        }
+      }
+      order = success;
+    }
+#else
+  WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(object, 4, expected, duration,
+                                                success, failure);
+#endif
+  }
+
+  int WG14_ATOMIC_WAITS_PREFIX(atomic_notify_32)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t
+  *restrict object,
+  uint_least32_t *restrict expected, uint_least32_t desired,
+  unsigned max_threads_to_wake, memory_order success, memory_order failure)
+  {
+    if(!atomic_compare_exchange_strong_explicit(object, expected, desired,
+                                                success, failure))
+    {
+      return 0;
+    }
+#if WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_32
+    const int ret =
+    WG14_ATOMIC_WAITS_PREFIX(wake_by_address32)(object, max_threads_to_wake);
+#else
+  const int ret =
+  WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(object, max_threads_to_wake);
+#endif
+    return (ret < 0) ? ret : (1 + ret);
   }
 
 #ifdef __cplusplus
 }
-#endif
 #endif

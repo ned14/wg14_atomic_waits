@@ -23,6 +23,8 @@
 
 #include <pthread.h>
 
+#define thrd_success 0
+
 typedef int (*thrd_start_t)(void *);
 typedef struct thrd_s
 {
@@ -46,7 +48,8 @@ static inline int thrd_create(thrd_t *thr, thrd_start_t func, void *arg)
   ret->res = 0;
   ret->func = func;
   *thr = ret;
-  return pthread_create(&ret->thread, WG14_ATOMIC_WAITS_NULLPTR, thrd_runner, ret);
+  return pthread_create(&ret->thread, WG14_ATOMIC_WAITS_NULLPTR, thrd_runner,
+                        ret);
 }
 
 static inline int thrd_join(thrd_t thr, int *res)
@@ -60,12 +63,18 @@ static inline int thrd_join(thrd_t thr, int *res)
   return ret;
 }
 
+static inline int thrd_sleep(const struct timespec *duration,
+                             struct timespec *remaining)
+{
+  return nanosleep(duration, remaining);
+}
+
 #endif
 
 static inline void thrd_sleep_ms(unsigned ms)
 {
   struct timespec ts;
   ts.tv_sec = ms / 1000;
-  ts.tv_nsec = (long)(ms % 1000) * 1000000L;
+  ts.tv_nsec = (long) (ms % 1000) * 1000000L;
   thrd_sleep(&ts, WG14_ATOMIC_WAITS_NULLPTR);
 }

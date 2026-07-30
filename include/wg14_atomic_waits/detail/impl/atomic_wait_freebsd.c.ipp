@@ -34,7 +34,7 @@ extern "C"
 #endif
 
   static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(umtx_wait_uint)(
-  const volatile _Atomic(uint_least32_t) *object, uint_least32_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object, uint_least32_t expected,
   const struct timespec *abs_timeout, int32_t *val)
   {
     int save_errno = errno;
@@ -67,7 +67,7 @@ extern "C"
   }
 
   static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(umtx_wake_uint)(
-  const volatile _Atomic(uint_least32_t) *object, unsigned count)
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object, unsigned count)
   {
     int save_errno = errno;
     long ret =
@@ -134,7 +134,7 @@ extern "C"
   // --- 4-byte: UMTX_OP_WAIT_UINT bypass ---
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(
-  const volatile _Atomic(uint_least32_t) *object, uint_least32_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object, uint_least32_t expected,
   memory_order order)
   {
     for(;;)
@@ -148,60 +148,60 @@ extern "C"
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_i4)(
-  const volatile _Atomic(int_least32_t) *object, int_least32_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least32_t *object, int_least32_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(
-    (const volatile _Atomic(uint_least32_t) *) object,
+    (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object,
     (uint_least32_t) expected, order);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_4)(
-  const volatile _Atomic(uint_least32_t) *object, uint_least32_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object, uint_least32_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(object, expected, order);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_i4)(
-  const volatile _Atomic(int_least32_t) *object, int_least32_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least32_t *object, int_least32_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(
-    (const volatile _Atomic(uint_least32_t) *) object,
+    (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object,
     (uint_least32_t) expected, order);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_4)(
-  volatile _Atomic(uint_least32_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object)
   {
-    umtx_wake_uint((const volatile _Atomic(uint_least32_t) *) object, 1);
+    umtx_wake_uint((const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object, 1);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_i4)(
-  volatile _Atomic(int_least32_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least32_t *object)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_4)(
-    (volatile _Atomic(uint_least32_t) *) object);
+    (volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_4)(
-  volatile _Atomic(uint_least32_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object)
   {
-    umtx_wake_uint((const volatile _Atomic(uint_least32_t) *) object, INT_MAX);
+    umtx_wake_uint((const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object, INT_MAX);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_i4)(
-  volatile _Atomic(int_least32_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least32_t *object)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_4)(
-    (volatile _Atomic(uint_least32_t) *) object);
+    (volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object);
   }
 
   // --- Sub-native-width: hash table fallback ---
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_1)(
-  const volatile _Atomic(uint_least8_t) *object, uint_least8_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object, uint_least8_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
@@ -209,7 +209,7 @@ extern "C"
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_i1)(
-  const volatile _Atomic(int_least8_t) *object, int_least8_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least8_t *object, int_least8_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
@@ -218,7 +218,7 @@ extern "C"
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_2)(
-  const volatile _Atomic(uint_least16_t) *object, uint_least16_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object, uint_least16_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
@@ -226,7 +226,7 @@ extern "C"
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_i2)(
-  const volatile _Atomic(int_least16_t) *object, int_least16_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least16_t *object, int_least16_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
@@ -235,7 +235,7 @@ extern "C"
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_1)(
-  const volatile _Atomic(uint_least8_t) *object, uint_least8_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object, uint_least8_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
@@ -243,7 +243,7 @@ extern "C"
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_i1)(
-  const volatile _Atomic(int_least8_t) *object, int_least8_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least8_t *object, int_least8_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
@@ -252,7 +252,7 @@ extern "C"
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_2)(
-  const volatile _Atomic(uint_least16_t) *object, uint_least16_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object, uint_least16_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
@@ -260,7 +260,7 @@ extern "C"
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_i2)(
-  const volatile _Atomic(int_least16_t) *object, int_least16_t expected,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least16_t *object, int_least16_t expected,
   memory_order order)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
@@ -269,56 +269,56 @@ extern "C"
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_1)(
-  volatile _Atomic(uint_least8_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 1,
                                                     1);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_i1)(
-  volatile _Atomic(int_least8_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least8_t *object)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 1,
                                                     1);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_2)(
-  volatile _Atomic(uint_least16_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 2,
                                                     1);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_i2)(
-  volatile _Atomic(int_least16_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least16_t *object)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 2,
                                                     1);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_1)(
-  volatile _Atomic(uint_least8_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 1,
                                                     UINT_MAX);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_i1)(
-  volatile _Atomic(int_least8_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least8_t *object)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 1,
                                                     UINT_MAX);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_2)(
-  volatile _Atomic(uint_least16_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 2,
                                                     UINT_MAX);
   }
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_i2)(
-  volatile _Atomic(int_least16_t) *object)
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least16_t *object)
   {
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 2,
                                                     UINT_MAX);
@@ -327,7 +327,7 @@ extern "C"
   // --- Native-width expected + notify (4 byte) ---
 
   int WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected_32)(
-  const volatile _Atomic(uint_least32_t) *restrict object,
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *restrict object,
   uint_least32_t *restrict expected, const struct timespec *restrict duration,
   memory_order success, memory_order failure)
   {
@@ -413,13 +413,13 @@ extern "C"
   }
 
   int WG14_ATOMIC_WAITS_PREFIX(atomic_notify_32)(
-  volatile _Atomic(uint_least32_t) *restrict object,
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *restrict object,
   uint_least32_t *restrict expected, uint_least32_t desired,
   unsigned max_threads_to_wake, memory_order success, memory_order failure)
   {
     uint_least32_t original = *expected;
     if(!atomic_compare_exchange_strong_explicit(
-       (volatile _Atomic(uint_least32_t) *) object, expected, desired,
+       (volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object, expected, desired,
        WG14_ATOMIC_WAITS_ATOMIC_PREFIX success,
        WG14_ATOMIC_WAITS_ATOMIC_PREFIX failure))
     {
@@ -431,7 +431,7 @@ extern "C"
     for(unsigned i = 0; i < max_threads_to_wake; i++)
     {
       int n =
-      umtx_wake_uint((const volatile _Atomic(uint_least32_t) *) object, 1);
+      umtx_wake_uint((const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object, 1);
       if(n <= 0)
         break;
       woke += n;

@@ -5,7 +5,7 @@
 int atomic_wait_expected_test_main(void)
 {
   int ret = 0;
-  _Atomic uint_least32_t value32 = 0;
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t value32 = 0;
   uint_least32_t expected32 = 0;
 
   // Immediate return - value != expected
@@ -30,4 +30,9 @@ int atomic_wait_expected_test_main(void)
   CHECK(expected32 == 5);
 
   return ret;
+}
+
+int main(void)
+{
+  return atomic_wait_expected_test_main();
 }

@@ -4,15 +4,11 @@
 
 The types include
 
-`int_native_wait_notify_t`
 `uint_native_wait_notify_t`
 
-which are the smallest `int_leastN_t` and `uint_leastN_t` types where `N` is at least thirty-two for which atomic waits and notifies have least overhead on this implementation.
+which is the smallest `uint_leastN_t` types where `N` is at least thirty-two for which atomic waits and notifies have least overhead on this implementation.
 
 ## To 7.17.6 Atomic integer types p1 append
-
-`atomic_int_native_wait_notify_t`
-`_Atomic int_native_wait_notify_t`
 
 `atomic_uint_native_wait_notify_t`
 `_Atomic uint_native_wait_notify_t`
