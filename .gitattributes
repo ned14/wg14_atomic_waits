@@ -1,0 +1,12 @@
+* text=auto !eol svneol=native#text/plain
+*.gitattributes text svneol=native#text/plain
+
+*.c          text svneol=native#text/plain
+*.cmake      text svneol=native#text/plain
+*.cpp        text svneol=native#text/plain
+*.h          text svneol=native#text/plain
+*.hpp        text svneol=native#text/plain
+*.ipp        text svneol=native#text/plain
+*.ipp.ipp    text svneol=native#text/plain
+*.c.ipp      text svneol=native#text/plain
+*.tpp        text svneol=native#text/plain
