@@ -5,20 +5,22 @@ set(CMAKE_C_VISIBILITY_PRESET "hidden" CACHE STRING "Only make explicitly export
 set(CMAKE_CXX_VISIBILITY_PRESET "hidden" CACHE STRING "Only make explicitly exported symbols visible")
 set(CMAKE_C_STANDARD "11" CACHE STRING "C standard to use")
 option(HEADER_ONLY_BUILD "Build using header only (unity build)" OFF)
+option(ALWAYS_USE_PTHREADS_BACKEND "Always use pthreads backend" OFF)
 
 project(wg14_atomic_waits LANGUAGES C CXX)
 include(GNUInstallDirs)
 enable_testing()
 
 set(LIBRARY_SOURCES
-  $<$<PLATFORM_ID:Windows>:src/wg14_atomic_waits/atomic_wait_windows.c>
-  $<$<PLATFORM_ID:Darwin>:src/wg14_atomic_waits/atomic_wait_macos.c>
-  $<$<PLATFORM_ID:Linux>:src/wg14_atomic_waits/atomic_wait_linux.c>
-  $<$<PLATFORM_ID:FreeBSD>:src/wg14_atomic_waits/atomic_wait_freebsd.c>
-  $<$<NOT:$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Darwin>,$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>>:src/wg14_atomic_waits/atomic_wait_pthreads.c>
+  $<$<AND:$<PLATFORM_ID:Windows>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_windows.c>
+  $<$<AND:$<PLATFORM_ID:Darwin>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_macos.c>
+  $<$<AND:$<PLATFORM_ID:Linux>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_linux.c>
+  $<$<AND:$<PLATFORM_ID:FreeBSD>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_freebsd.c>
+  $<$<OR:$<NOT:$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Darwin>,$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>>,$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>:src/wg14_atomic_waits/atomic_wait_pthreads.c>
 )
 
 add_library(${PROJECT_NAME} ${LIBRARY_SOURCES})
+target_link_libraries(${PROJECT_NAME} PUBLIC $<$<OR:$<NOT:$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Darwin>,$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>>,$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>:pthread>)
 if(HEADER_ONLY_BUILD)
   target_compile_definitions(${PROJECT_NAME} PUBLIC WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY)
 endif()

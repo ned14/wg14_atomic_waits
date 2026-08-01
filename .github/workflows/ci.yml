@@ -19,8 +19,9 @@ jobs:
         debug: [Debug, Release]
         standard: [11, 23]
         shared: [OFF, ON]
+        pthreads: [OFF, ON]
     env:
-      NAME: Linux-${{ matrix.compiler }}-${{ matrix.debug }}-${{ matrix.standard }}-${{ matrix.shared }}
+      NAME: Linux-${{ matrix.compiler }}-${{ matrix.debug }}-${{ matrix.standard }}-${{ matrix.shared }}-${{ matrix.pthreads }}
       CC: ${{ matrix.compiler }}
           
     steps:
@@ -31,7 +32,7 @@ jobs:
       run: |
         mkdir build && cd build
         export CXX=${CC/cc/}++
-        cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.debug }} -DCMAKE_C_STANDARD=${{ matrix.standard }} -DBUILD_SHARED_LIBS=${{ matrix.shared }}  -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
+        cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.debug }} -DCMAKE_C_STANDARD=${{ matrix.standard }} -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DALWAYS_USE_PTHREADS_BACKEND=${{ matrix.pthreads }} -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
 
     - name: Build Linux
       shell: bash
@@ -50,8 +51,9 @@ jobs:
         debug: [Debug, Release]
         standard: [11, 23]
         shared: [OFF, ON]
+        pthreads: [OFF, ON]
     env:
-      NAME: MacOS-${{ matrix.debug }}-${{ matrix.standard }}-${{ matrix.shared }}
+      NAME: MacOS-${{ matrix.debug }}-${{ matrix.standard }}-${{ matrix.shared }}-${{ matrix.pthreads }}
           
     steps:
     - uses: actions/checkout@v4
@@ -60,7 +62,7 @@ jobs:
       shell: bash
       run: |
         mkdir build && cd build
-        cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.debug }} -DCMAKE_C_STANDARD=${{ matrix.standard }} -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
+        cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.debug }} -DCMAKE_C_STANDARD=${{ matrix.standard }} -DBUILD_SHARED_LIBS=${{ matrix.shared }} -DALWAYS_USE_PTHREADS_BACKEND=${{ matrix.pthreads }} -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
 
     - name: Build Mac OS
       shell: bash
