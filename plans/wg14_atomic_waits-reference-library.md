@@ -57,7 +57,6 @@ wg14_atomic_waits/
 │       ├── atomic_wait.h            (primary public API header)
 │       └── detail/
 │           └── impl/
-│               ├── lock_unlock.h                (spinning CAS lock macros)
 │               ├── atomic_wait_common.ipp.ipp  (shared internal types/helpers)
 │               ├── atomic_wait_linux.c.ipp      (Linux futex wait/notify impl)
 │               ├── atomic_wait_freebsd.c.ipp    (FreeBSD umtx wait/notify impl)
@@ -145,9 +144,7 @@ Copy the calling convention of `thrd_signal_handle.h` (~400–500 lines):
 4. `#include <stdatomic.h>` and `#include <time.h>`
 5. `extern "C"` opening block
 6. **Public type definitions**, all prefixed:
-   - `WG14_ATOMIC_WAITS_PREFIX(int_native_wait_notify_t)` — always `int_least32_t` (matching the proposal's `int_least32_t` definition; equals 4 bytes on all platforms).
-   - `WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t)` — always `uint_least32_t` (matching the proposal's `uint_least32_t` definition; equals 4 bytes on all platforms).
-   - `WG14_ATOMIC_WAITS_PREFIX(atomic_int_native_wait_notify_t)` — `_Atomic` typedef
+   - `WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t)` — implementation-defined typedef for the smallest `uint_leastN_t` where `N` is at least thirty-two and for which atomic waits and notifies have least overhead on this implementation; equals 4 bytes on all platforms.
    - `WG14_ATOMIC_WAITS_PREFIX(atomic_uint_native_wait_notify_t)` — `_Atomic` typedef
  7. **Public API declarations**, all with `WG14_ATOMIC_WAITS_EXTERN` and name-prefixed. The six functions split into two categories:
     - **Generic** (accept any `_Atomic` type): `atomic_wait`, `atomic_wait_explicit`, `atomic_notify_one`, `atomic_notify_all`
@@ -179,12 +176,6 @@ Copy the calling convention of `thrd_signal_handle.h` (~400–500 lines):
 **Proposal semantic pinning for the header:**
 - `atomic_wait` and `atomic_wait_explicit` return `void`. Do not return a status code.
 - `atomic_wait_expected` and `atomic_notify` use the `restrict`-qualified pointer pattern from the proposal; their declarations must match the synopsis verbatim.
-
----
-
-### Step 4 — `include/wg14_atomic_waits/detail/impl/lock_unlock.h`
-
-Copy `wg14_signals/include/wg14_signals/detail/impl/lock_unlock.h` verbatim; only rename the include guard and exported macros from `WG14_SIGNALS_*` to `WG14_ATOMIC_WAITS_*`. The `LOCK`/`UNLOCK` macros are for internal serialisation of platform-specific wait queue manipulation.
 
 ---
 
@@ -301,7 +292,7 @@ Shared internal implementation (~350–450 lines, analogous to `thrd_signal_hand
   - Insertion: quadratic probe until empty bucket found; store key/value.
   - Lookup: quadratic probe until key matches or empty bucket reached.
   - Deletion: set bucket to `{NULL, NULL}` sentinel (no tombstones needed because wait queues are long-lived and deletions are rare; if a bucket is re-inserted, probing skips empty sentinels correctly).
-- `LOCK`/`UNLOCK` macros from `lock_unlock.h` serialize all mutations (insert, find, delete) of the hash table. Lookup during `atomic_notify` also holds the lock briefly to safely read/modify the wait queue. The `volatile`-to-`void*` cast for the key: `object` is `volatile A *` per the proposal; cast to `void *` via `(void *)(uintptr_t)object`. The cast discards `volatile` but does not dereference the pointer, so it is well-defined as a hash key. Test under `-Wextra` to suppress qualifier-discard warnings.
+- An `atomic_flag` based lock serializes all mutations (insert, find, delete) of the hash table. Lookup during `atomic_notify` also holds the lock briefly to safely read/modify the wait queue. The `volatile`-to-`void*` cast for the key: `object` is `volatile A *` per the proposal; cast to `void *` via `(void *)(uintptr_t)object`. The cast discards `volatile` but does not dereference the pointer, so it is well-defined as a hash key. Test under `-Wextra` to suppress qualifier-discard warnings.
 - **Implements all six public functions** with the following semantics required by the proposal:
 
   **`atomic_wait` / `atomic_wait_explicit` delegate to `atomic_wait_expected`:**
@@ -577,7 +568,7 @@ Copy from `wg14_signals/Doxyfile` and update `PROJECT_NAME` to `wg14_atomic_wait
 3. **`atomic_wait_expected` `*expected` update**: On return, `*expected` must contain the value observed by the most recent load before the function returns. Implement via a re-load after every park return and before the final return.
 4. **`atomic_wait_expected` timed-wait conversion**: Convert `*duration` (a `struct timespec`) to the platform timeout using a **ceiling conversion** (round up, not down), ensuring the total accumulated wait is at least `*duration`. On Linux/FreeBSD, the futex/umtx timeout syscall uses absolute time; the implementation must convert `timespec` to the platform's absolute time base (e.g., `CLOCK_MONOTONIC`). On Windows, cap converted milliseconds at `INFINITE` (0xFFFFFFFF). On macOS, cap nanoseconds at `UINT32_MAX` per `ulock_wait` call and loop for longer timeouts.
 5. **`atomic_notify` return value**: Returns positive number of woken threads, or `1 + N` where the extra info depends on platform. Must not exceed `max_threads_to_wake`. Returns 0 if the CAS fails or no waiters are parked; negative on error.
-6. **`atomic_int_native_wait_notify_t` / `atomic_uint_native_wait_notify_t`**: The header must expose `atomic_int_native_wait_notify_t` and `atomic_uint_native_wait_notify_t` typedefs per §7.17.1 / §7.17.6 of `docs/proposal.md`.
+6. **`atomic_uint_native_wait_notify_t`**: The header must expose `atomic_uint_native_wait_notify_t` typedef per §7.17.1 / §7.17.6 of `docs/proposal.md`.
 7. **C11 `_Atomic` compatibility**: `object` is `volatile A *`. Do not access fields directly — use `atomic_load_explicit` / `atomic_compare_exchange_weak_explicit` only. The `volatile` qualifier is required by the proposal.
 8. **Platform detection in `config.h`**: The Linux backend (`atomic_wait_linux.c.ipp`) is Linux-only and uses futexes (`SYS_futex`). The FreeBSD backend (`atomic_wait_freebsd.c.ipp`) is FreeBSD-only and uses `_umtx_time_spec` with `UMTX_OP_WAIT` (native-width, `long`) or `UMTX_OP_WAIT_UINT` (4-byte, `uint32_t`) selected at runtime based on `sizeof(*object)`. The pthreads backend (`atomic_wait_pthreads.c.ipp`) is the fallback for non-Linux non-FreeBSD POSIX (e.g. OpenBSD, NetBSD, Solaris) and uses pthread condition variables. The macOS backend (`atomic_wait_macos.c.ipp`) is Darwin-only and uses `ulock_wait`/`ulock_wake` (`<bsd/sys/ulock.h>`) with `UL_COMPARE_AND_WAIT` (4-byte) or `UL_COMPARE_AND_WAIT64` (8-byte) selected at runtime based on `sizeof(*object)`. macOS can always avoid the hash table for native-width inputs (4-byte and 8-byte); the hash table fallback is only needed for sub-native-width types (1 or 2 bytes). The header-only include block in `atomic_wait.h` selects the correct backend via `#if defined(_WIN32) || defined(_WIN64)` / `#elif defined(__linux__)` / `#elif defined(__FreeBSD__)` / `#elif defined(__APPLE__)` / `#else`.
 9. **Header-only compilation**: Ensure all `#if WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY` blocks are placed *after* the `extern "C"` closing `}` and *before* the final `#endif` of the include guard, matching `thrd_signal_handle.h:463-469`.

@@ -64,7 +64,7 @@ extern "C"
     const int ret = __ulock_wait(WG14_ATOMIC_WAITS_UL_COMPARE_AND_WAIT,
                                  (uint32_t *) (uintptr_t) object,
                                  (uint64_t) expected, timeout_us);
-    return -ret;
+    return ret;
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_64 1
@@ -86,7 +86,7 @@ extern "C"
     const int ret = __ulock_wait(WG14_ATOMIC_WAITS_UL_COMPARE_AND_WAIT64,
                                  (uint64_t *) (uintptr_t) object,
                                  (uint64_t) expected, timeout_us);
-    return -ret;
+    return ret;
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_32 1
@@ -103,7 +103,7 @@ extern "C"
     (uint32_t *) (uintptr_t) object,
     atomic_load_explicit(object,
                          WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_relaxed));
-    return (ret != 0) ? -ret : ((max_threads_to_wake == 1) ? 1 : (INT_MAX - 1));
+    return (ret != 0) ? ret : ((max_threads_to_wake == 1) ? 1 : (INT_MAX - 1));
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_64 1
@@ -120,7 +120,7 @@ extern "C"
     (uint64_t *) (uintptr_t) object,
     atomic_load_explicit(object,
                          WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_relaxed));
-    return (ret != 0) ? -ret : ((max_threads_to_wake == 1) ? 1 : (INT_MAX - 1));
+    return (ret != 0) ? ret : ((max_threads_to_wake == 1) ? 1 : (INT_MAX - 1));
   }
 
 #include "atomic_wait_common.ipp.ipp"

@@ -112,8 +112,9 @@ extern "C"
     return (h ^ 2166136261U) * 16777619U;
   }
 
+  // MUST HOLD THE LOCK ON ENTRY
   static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(hash_table_grow)(
-  WG14_ATOMIC_WAITS_PREFIX(hash_table_t) * table)
+  WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table)
   {
     const unsigned old_count = table->bucket_count;
     unsigned new_count = old_count * 2;
@@ -163,15 +164,14 @@ extern "C"
     return 0;
   }
 
+  // MUST HOLD THE LOCK ON ENTRY
   static WG14_ATOMIC_WAITS_INLINE WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *
   WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(
+  WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table,
   const volatile void *object, bool increment_use_count)
   {
-    WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
-    WG14_ATOMIC_WAITS_PREFIX(hash_table)();
     void *const key = (void *) object;
 
-    WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
     if(table->buckets == WG14_ATOMIC_WAITS_NULLPTR)
     {
       table->buckets = (WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *) calloc(
@@ -181,7 +181,6 @@ extern "C"
       if(table->buckets == WG14_ATOMIC_WAITS_NULLPTR)
       {
         // out of memory
-        WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
         return WG14_ATOMIC_WAITS_NULLPTR;
       }
     }
@@ -198,7 +197,6 @@ extern "C"
           if(!increment_use_count)
           {
             // not found
-            WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
             return WG14_ATOMIC_WAITS_NULLPTR;
           }
           bucket->proxy = (WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *) calloc(
@@ -206,7 +204,6 @@ extern "C"
           if(bucket->proxy == WG14_ATOMIC_WAITS_NULLPTR)
           {
             // out of memory
-            WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
             return WG14_ATOMIC_WAITS_NULLPTR;
           }
           const int ret =
@@ -216,13 +213,14 @@ extern "C"
             // custom init failed
             free(bucket->proxy);
             bucket->proxy = WG14_ATOMIC_WAITS_NULLPTR;
-            WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
             return WG14_ATOMIC_WAITS_NULLPTR;
           }
           bucket->key = key;
           // found
+          atomic_store_explicit(
+          &bucket->proxy->atomic, 0,
+          WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release);
           bucket->proxy->use_count = 1;
-          WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
           return bucket->proxy;
         }
         if(bucket->key == key)
@@ -232,14 +230,12 @@ extern "C"
           {
             bucket->proxy->use_count++;
           }
-          WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
           return bucket->proxy;
         }
       }
       if(WG14_ATOMIC_WAITS_PREFIX(hash_table_grow)(table) != 0)
       {
         // out of memory or hit maximum size limit
-        WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
         return WG14_ATOMIC_WAITS_NULLPTR;
       }
     }
@@ -288,6 +284,45 @@ extern "C"
     }
   }
 
+  static WG14_ATOMIC_WAITS_INLINE void WG14_ATOMIC_WAITS_PREFIX(
+  atomic_load_generic)(uint8_t *dest, const volatile void *object, size_t bytes,
+                       WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order)
+  {
+    switch(bytes)
+    {
+    case 1:
+    {
+      const uint8_t v =
+      atomic_load_explicit((const atomic_uint_least8_t *) object, order);
+      memcpy(dest, &v, bytes);
+      break;
+    }
+    case 2:
+    {
+      const uint16_t v =
+      atomic_load_explicit((const atomic_uint_least16_t *) object, order);
+      memcpy(dest, &v, bytes);
+      break;
+    }
+    case 4:
+    {
+      const uint32_t v =
+      atomic_load_explicit((const atomic_uint_least32_t *) object, order);
+      memcpy(dest, &v, bytes);
+      break;
+    }
+    case 8:
+    {
+      const uint64_t v =
+      atomic_load_explicit((const atomic_uint_least64_t *) object, order);
+      memcpy(dest, &v, bytes);
+      break;
+    }
+    default:
+      abort();
+    }
+  }
+
 
   static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(
   atomic_wait_generic)(const volatile void *object, size_t bytes,
@@ -309,56 +344,49 @@ extern "C"
         end.tv_nsec -= 1000000000;
       }
     }
+    WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
+    WG14_ATOMIC_WAITS_PREFIX(hash_table)();
     WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order = failure;
     WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *item = WG14_ATOMIC_WAITS_NULLPTR;
+    bool lock_is_held = false;
     for(;;)
     {
-      uint8_t current[8];
-      switch(bytes)
+      union
       {
-      case 1:
-      {
-        const uint8_t v =
-        atomic_load_explicit((const atomic_uint_least8_t *) object, order);
-        memcpy(current, &v, 1);
-        break;
-      }
-      case 2:
-      {
-        const uint16_t v =
-        atomic_load_explicit((const atomic_uint_least16_t *) object, order);
-        memcpy(current, &v, 1);
-        break;
-      }
-      case 4:
-      {
-        const uint32_t v =
-        atomic_load_explicit((const atomic_uint_least32_t *) object, order);
-        memcpy(current, &v, 1);
-        break;
-      }
-      case 8:
-      {
-        const uint64_t v =
-        atomic_load_explicit((const atomic_uint_least64_t *) object, order);
-        memcpy(current, &v, 1);
-        break;
-      }
-      default:
-        abort();
-      }
-      if(memcmp(current, expected, bytes) != 0)
+        uint64_t as_uint64;
+        uint8_t as_bytes[8];
+      } current;
+      WG14_ATOMIC_WAITS_PREFIX(atomic_load_generic)(current.as_bytes, object,
+                                                    bytes, order);
+      if(memcmp(current.as_bytes, expected, bytes) != 0)
       {
         // We have successfully been woken
-        memcpy(expected, current, bytes);
+        memcpy(expected, current.as_bytes, bytes);
         break;
       }
-      item = WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(object, true);
       if(item == WG14_ATOMIC_WAITS_NULLPTR)
       {
-        return -1;
+        WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
+        item = WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(
+        table, object, true);
+        if(item == WG14_ATOMIC_WAITS_NULLPTR)
+        {
+          WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+          return -1;
+        }
+        // Recheck our atomic now we are holding the lock
+        WG14_ATOMIC_WAITS_PREFIX(atomic_load_generic)(current.as_bytes, object,
+                                                      bytes, order);
+        if(memcmp(current.as_bytes, expected, bytes) != 0)
+        {
+          // We have successfully been woken. Probably delete my entry.
+          memcpy(expected, current.as_bytes, bytes);
+          lock_is_held = true;
+          break;
+        }
+        WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+        ret = 1;  // return that we did enter a wait cycle
       }
-      ret = 1;
 
       struct timespec ts_remaining;
       if(duration != WG14_ATOMIC_WAITS_NULLPTR)
@@ -392,10 +420,11 @@ extern "C"
     }
     if(item != WG14_ATOMIC_WAITS_NULLPTR)
     {
+      if(!lock_is_held)
+      {
+        WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
+      }
       // Decrement the use count, and if we are the last waiter delete ourselves
-      WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
-      WG14_ATOMIC_WAITS_PREFIX(hash_table)();
-      WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
       if(0 == --item->use_count)
       {
         WG14_ATOMIC_WAITS_PREFIX(hash_table_remove_item)(table, object);
@@ -409,15 +438,21 @@ extern "C"
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(volatile void *object,
                                                   unsigned max_threads_to_wake)
   {
+    WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
+    WG14_ATOMIC_WAITS_PREFIX(hash_table)();
+    WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
     WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *const item =
-    WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(object, false);
+    WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(table, object, false);
     if(item == WG14_ATOMIC_WAITS_NULLPTR)
     {
       // Nothing to wake
+      WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
       return 0;
     }
-    return WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAKE(
+    const int ret = WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAKE(
     item, max_threads_to_wake);
+    WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+    return ret;
   }
 
   /************************ External API ********************************/
@@ -636,6 +671,10 @@ extern "C"
   uint_least32_t *restrict expected, uint_least32_t desired,
   unsigned max_threads_to_wake, memory_order success, memory_order failure)
   {
+    if(max_threads_to_wake == 0)
+    {
+      return 0;
+    }
     if(!atomic_compare_exchange_strong_explicit(object, expected, desired,
                                                 success, failure))
     {

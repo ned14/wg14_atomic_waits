@@ -128,7 +128,7 @@ recently loaded -- in the case of duration timeout, it will be the same as on en
 
 ```
 #include <stdatomic.h>
-int atomic_notify(volatile A *object, C *restrict expected, C desired,
+int atomic_notify(volatile A *restrict object, C *restrict expected, C desired,
                   unsigned max_threads_to_wake, memory_order success, memory_order failure);
 ```
 
@@ -138,7 +138,7 @@ int atomic_notify(volatile A *object, C *restrict expected, C desired,
 or this generic function shall be undefined.
 
 If `atomic_compare_exchange_strong_explicit(object, expected, desired, success, failure)`
-returns `true`, unblocks up to `max_threads_to_wake` threads blocked in `atomic_wait_*()`
+returns `true`, unblocks at least `max_threads_to_wake` threads blocked in `atomic_wait_*()`
 for `object`.
 
 ### Returns
