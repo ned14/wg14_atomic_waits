@@ -23,8 +23,9 @@
 #endif
 
 #include "../../atomic_wait.h"
-#include "atomic_wait_common.ipp.ipp"
+
 #include <errno.h>
+#include <limits.h>
 #include <sys/umtx.h>
 #include <time.h>
 
@@ -33,13 +34,16 @@ extern "C"
 {
 #endif
 
-  static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(umtx_wait_uint)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object, uint_least32_t expected,
-  const struct timespec *abs_timeout, int32_t *val)
+#define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32 1
+  // Returns -errno if failed, 0 if success
+  static WG14_ATOMIC_WAITS_INLINE int
+  WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
+  uint_least32_t expected, const struct timespec *abs_timeout)
   {
     int save_errno = errno;
     struct _umtx_time umtx_time;
-    if(abs_timeout)
+    if(abs_timeout != WG14_ATOMIC_WAITS_NULLPTR)
     {
       umtx_time._timeout = *abs_timeout;
       umtx_time._flags = UMTX_ABSTIME;
@@ -52,12 +56,7 @@ extern "C"
     }
     int ret = _umtx_op((volatile void *) (uintptr_t) object, UMTX_OP_WAIT_UINT,
                        expected, (long) &umtx_time);
-    if(ret == 0)
-    {
-      errno = save_errno;
-      return 0;
-    }
-    if(errno == EAGAIN || errno == EINTR)
+    if(ret == 0 || errno == EAGAIN || errno == EINTR)
     {
       errno = save_errno;
       return 0;
@@ -66,29 +65,16 @@ extern "C"
     return -1;
   }
 
-  static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(umtx_wake_uint)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object, unsigned count)
-  {
-    int save_errno = errno;
-    long ret =
-    _umtx_op((volatile void *) (uintptr_t) object, UMTX_OP_WAKE_UINT, count, 0);
-    if(ret < 0)
-    {
-      errno = save_errno;
-      return 0;
-    }
-    errno = save_errno;
-    return (int) ret;
-  }
-
+#define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_64 1
+  // Returns -errno if failed, 0 if success
   static WG14_ATOMIC_WAITS_INLINE int
-  WG14_ATOMIC_WAITS_PREFIX(umtx_wait)(const volatile void *object,
-                                      unsigned long expected,
-                                      const struct timespec *abs_timeout)
+  WG14_ATOMIC_WAITS_PREFIX(wait_on_address64)(
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
+  uint_least64_t expected, const struct timespec *abs_timeout)
   {
     int save_errno = errno;
     struct _umtx_time umtx_time;
-    if(abs_timeout)
+    if(abs_timeout != WG14_ATOMIC_WAITS_NULLPTR)
     {
       umtx_time._timeout = *abs_timeout;
       umtx_time._flags = UMTX_ABSTIME;
@@ -97,16 +83,11 @@ extern "C"
     else
     {
       memset(&umtx_time, 0, sizeof(umtx_time));
+      umtx_time._flags = 0;
     }
-
     int ret = _umtx_op((volatile void *) (uintptr_t) object, UMTX_OP_WAIT,
-                       (long) &umtx_time, expected);
-    if(ret == 0)
-    {
-      errno = save_errno;
-      return 0;
-    }
-    if(errno == EAGAIN || errno == EINTR)
+                       (long) &umtx_time, (long) expected);
+    if(ret == 0 || errno == EAGAIN || errno == EINTR)
     {
       errno = save_errno;
       return 0;
@@ -115,13 +96,16 @@ extern "C"
     return -1;
   }
 
+#define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_32 1
+  // Returns -errno if failed, number of threads woken if success
   static WG14_ATOMIC_WAITS_INLINE int
-  WG14_ATOMIC_WAITS_PREFIX(umtx_wake)(const volatile void *object,
-                                      unsigned count)
+  WG14_ATOMIC_WAITS_PREFIX(wake_by_address32)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
+  unsigned max_threads_to_wake)
   {
     int save_errno = errno;
-    long ret = _umtx_op((volatile void *) (uintptr_t) object, UMTX_OP_WAKE,
-                        (long) count, 0);
+    long ret = _umtx_op((volatile void *) (uintptr_t) object, UMTX_OP_WAKE_UINT,
+                        (long) max_threads_to_wake, 0);
     if(ret < 0)
     {
       errno = save_errno;
@@ -131,314 +115,23 @@ extern "C"
     return (int) ret;
   }
 
-  // --- 4-byte: UMTX_OP_WAIT_UINT bypass ---
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object, uint_least32_t expected,
-  memory_order order)
+#define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_64 1
+  // Returns -errno if failed, number of threads woken if success
+  static WG14_ATOMIC_WAITS_INLINE int
+  WG14_ATOMIC_WAITS_PREFIX(wake_by_address64)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
+  unsigned max_threads_to_wake)
   {
-    for(;;)
+    int save_errno = errno;
+    long ret = _umtx_op((volatile void *) (uintptr_t) object, UMTX_OP_WAKE,
+                        (long) max_threads_to_wake, 0);
+    if(ret < 0)
     {
-      uint_least32_t current =
-      atomic_load_explicit(object, WG14_ATOMIC_WAITS_ATOMIC_PREFIX order);
-      if(current != expected)
-        return;
-      umtx_wait_uint(object, expected, NULL, (int32_t *) (uintptr_t) object);
-    }
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_i4)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least32_t *object, int_least32_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(
-    (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object,
-    (uint_least32_t) expected, order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_4)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object, uint_least32_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(object, expected, order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_i4)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least32_t *object, int_least32_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(
-    (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object,
-    (uint_least32_t) expected, order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_4)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object)
-  {
-    umtx_wake_uint((const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object, 1);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_i4)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least32_t *object)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_4)(
-    (volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_4)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object)
-  {
-    umtx_wake_uint((const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object, INT_MAX);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_i4)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least32_t *object)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_4)(
-    (volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object);
-  }
-
-  // --- Sub-native-width: hash table fallback ---
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_1)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object, uint_least8_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-    (const volatile void *) object, 1, (uint64_t) expected, order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_i1)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least8_t *object, int_least8_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-    (const volatile void *) object, 1, (uint64_t) (uint_least8_t) expected,
-    order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_2)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object, uint_least16_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-    (const volatile void *) object, 2, (uint64_t) expected, order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_i2)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least16_t *object, int_least16_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-    (const volatile void *) object, 2, (uint64_t) (uint_least16_t) expected,
-    order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_1)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object, uint_least8_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-    (const volatile void *) object, 1, (uint64_t) expected, order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_i1)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least8_t *object, int_least8_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-    (const volatile void *) object, 1, (uint64_t) (uint_least8_t) expected,
-    order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_2)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object, uint_least16_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-    (const volatile void *) object, 2, (uint64_t) expected, order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit_i2)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least16_t *object, int_least16_t expected,
-  memory_order order)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-    (const volatile void *) object, 2, (uint64_t) (uint_least16_t) expected,
-    order);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_1)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 1,
-                                                    1);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_i1)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least8_t *object)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 1,
-                                                    1);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_2)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 2,
-                                                    1);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_i2)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least16_t *object)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 2,
-                                                    1);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_1)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 1,
-                                                    UINT_MAX);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_i1)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least8_t *object)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 1,
-                                                    UINT_MAX);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_2)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 2,
-                                                    UINT_MAX);
-  }
-
-  void WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_i2)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int_least16_t *object)
-  {
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)((volatile void *) object, 2,
-                                                    UINT_MAX);
-  }
-
-  // --- Native-width expected + notify (4 byte) ---
-
-  int WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected_32)(
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *restrict object,
-  uint_least32_t *restrict expected, const struct timespec *restrict duration,
-  memory_order success, memory_order failure)
-  {
-    struct timespec end;
-
-    if(duration)
-    {
-      struct timespec now;
-      clock_gettime(CLOCK_MONOTONIC, &now);
-      end.tv_sec = now.tv_sec + duration->tv_sec;
-      end.tv_nsec = now.tv_nsec + duration->tv_nsec;
-      if(end.tv_nsec >= 1000000000)
-      {
-        end.tv_sec++;
-        end.tv_nsec -= 1000000000;
-      }
-    }
-
-    for(;;)
-    {
-      uint_least32_t current =
-      atomic_load_explicit(object, WG14_ATOMIC_WAITS_ATOMIC_PREFIX failure);
-      if(current != *expected)
-      {
-        *expected = current;
-        atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX success);
-        return 0;
-      }
-      if(duration)
-      {
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        if(now.tv_sec > end.tv_sec ||
-           (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
-        {
-          *expected = current;
-          atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX failure);
-          return 0;
-        }
-
-        struct _umtx_time umtx_time;
-        umtx_time._timeout = end;
-        umtx_time._flags = UMTX_ABSTIME;
-        umtx_time._clockid = UMTX_CLOCK_MONOTONIC;
-
-        int ret = _umtx_op((volatile void *) (uintptr_t) object,
-                           UMTX_OP_WAIT_UINT, *expected, (long) &umtx_time);
-
-        uint_least32_t current2 =
-        atomic_load_explicit(object, WG14_ATOMIC_WAITS_ATOMIC_PREFIX failure);
-        *expected = current2;
-        if(ret < 0 && errno == ETIMEDOUT)
-        {
-          atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX failure);
-          return 0;
-        }
-        if(current2 != *expected)
-        {
-          atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX success);
-          return 1;
-        }
-        // Spurious wake, retry
-      }
-      else
-      {
-        int ret =
-        umtx_wait_uint(object, *expected, NULL, (int32_t *) (uintptr_t) object);
-        uint_least32_t current2 =
-        atomic_load_explicit(object, WG14_ATOMIC_WAITS_ATOMIC_PREFIX failure);
-        *expected = current2;
-        if(ret < 0 && errno == ETIMEDOUT)
-        {
-          atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX failure);
-          return 0;
-        }
-        if(current2 != *expected)
-        {
-          atomic_signal_fence(WG14_ATOMIC_WAITS_ATOMIC_PREFIX success);
-          return 1;
-        }
-      }
-    }
-  }
-
-  int WG14_ATOMIC_WAITS_PREFIX(atomic_notify_32)(
-  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *restrict object,
-  uint_least32_t *restrict expected, uint_least32_t desired,
-  unsigned max_threads_to_wake, memory_order success, memory_order failure)
-  {
-    uint_least32_t original = *expected;
-    if(!atomic_compare_exchange_strong_explicit(
-       (volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object, expected, desired,
-       WG14_ATOMIC_WAITS_ATOMIC_PREFIX success,
-       WG14_ATOMIC_WAITS_ATOMIC_PREFIX failure))
-    {
+      errno = save_errno;
       return 0;
     }
-    if(max_threads_to_wake == 0)
-      return 1;
-    int woke = 0;
-    for(unsigned i = 0; i < max_threads_to_wake; i++)
-    {
-      int n =
-      umtx_wake_uint((const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object, 1);
-      if(n <= 0)
-        break;
-      woke += n;
-    }
-    return 1 + woke;
+    errno = save_errno;
+    return (int) ret;
   }
 
-#ifdef __cplusplus
-}
-#endif
+#include "atomic_wait_common.ipp.ipp"
