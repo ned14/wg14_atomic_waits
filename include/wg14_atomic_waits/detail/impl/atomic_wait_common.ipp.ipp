@@ -32,7 +32,11 @@ limitations under the License.
 #endif
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE                           \
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t
-#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_INIT(x) (0)
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_INIT(x)                   \
+  (                                                                            \
+  atomic_store_explicit(&(x)->atomic, 0,                                       \
+                        WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release), \
+  0)
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_DESTROY(x) (0)
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(x, timeout)          \
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(&(x)->atomic, 0, (timeout))
@@ -217,9 +221,6 @@ extern "C"
           }
           bucket->key = key;
           // found
-          atomic_store_explicit(
-          &bucket->proxy->atomic, 0,
-          WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release);
           bucket->proxy->use_count = 1;
           return bucket->proxy;
         }
@@ -379,7 +380,8 @@ extern "C"
                                                       bytes, order);
         if(memcmp(current.as_bytes, expected, bytes) != 0)
         {
-          // We have successfully been woken. Probably delete my entry.
+          // We have successfully been woken. Probably delete my
+          // entry.
           memcpy(expected, current.as_bytes, bytes);
           lock_is_held = true;
           break;
@@ -424,7 +426,8 @@ extern "C"
       {
         WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
       }
-      // Decrement the use count, and if we are the last waiter delete ourselves
+      // Decrement the use count, and if we are the last waiter delete
+      // ourselves
       if(0 == --item->use_count)
       {
         WG14_ATOMIC_WAITS_PREFIX(hash_table_remove_item)(table, object);
@@ -455,7 +458,8 @@ extern "C"
     return ret;
   }
 
-  /************************ External API ********************************/
+  /************************ External API
+   * ********************************/
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_1)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object,
@@ -660,8 +664,8 @@ extern "C"
       order = success;
     }
 #else
-  WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(object, 4, expected, duration,
-                                                success, failure);
+  return WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
+  object, 4, expected, duration, success, failure);
 #endif
   }
 
