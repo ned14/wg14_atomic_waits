@@ -32,6 +32,11 @@ set(LIBRARY_SOURCES
 
 add_library(${PROJECT_NAME} ${LIBRARY_SOURCES})
 target_link_libraries(${PROJECT_NAME} PUBLIC $<$<OR:$<NOT:$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Darwin>,$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>>,$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>:pthread>)
+# WaitOnAddress/WakeByAddressSingle/WakeByAddressAll are provided by
+# Synchronization.lib on the Windows SDK. Only the native Windows backend
+# (not the forced-pthreads build) uses them.
+target_link_libraries(${PROJECT_NAME} PUBLIC
+  $<$<AND:$<PLATFORM_ID:Windows>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:Synchronization>)
 if(HEADER_ONLY_BUILD)
   target_compile_definitions(${PROJECT_NAME} PUBLIC WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY)
 endif()
