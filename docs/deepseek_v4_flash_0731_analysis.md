@@ -22,13 +22,15 @@ test program was executed**; all conclusions come from reading the code.
 
 ## 1. Executive summary
 
-The primary correctness race (one-way notification flag never re-armed), the broken
-pthreads backend, and a set of return-value / structure deviations remain unfixed. The
-following were fixed since the original review and are no longer listed: the Linux
-`atomic_wait_expected` timeout-misreported-as-error bug (now returns cleanly), the Windows
-single-wake bug (now uses `WakeByAddressAll` for `max > 1`), the FreeBSD 8-byte
-`UMTX_OP_WAIT` argument-order swap (now consistent with the 4-byte call), and the silent
-width-dispatch no-op (now a `_Static_assert`).
+The primary correctness race (one-way notification flag never re-armed) and a set of
+return-value / structure deviations remain unfixed. The following were fixed since the
+original review and are no longer listed: the Linux `atomic_wait_expected`
+timeout-misreported-as-error bug (now returns cleanly), the Windows single-wake bug (now
+uses `WakeByAddressAll` for `max > 1`), the FreeBSD 8-byte `UMTX_OP_WAIT` argument-order
+swap (now consistent with the 4-byte call), the silent width-dispatch no-op (now a
+`_Static_assert`), and the broken pthreads backend (now a self-contained per-proxy
+mutex + condvar + wake-token counter that serialises the wait decision and the signal,
+eliminating the unlocked thread-local mutex and the lost-wake race).
 
 ---
 
@@ -66,7 +68,7 @@ is effectively lost; correctness hinges entirely on the busy-spin poll.
 The hash-table fallback, i.e.:
 * **Linux:** 8-byte operands (futex is 32-bit only), and 1-/2-byte operands.
 * **macOS / FreeBSD:** sub-native widths (1/2-byte).
-* **pthreads backend:** every operand (see Section 3).
+* **pthreads backend:** every operand (this backend is now fixed; see note below).
 
 ### Recommended fix direction (unchanged)
 Replace the 0/1 flag with a monotonically increasing sequence number the waiter reads
@@ -74,37 +76,18 @@ Replace the 0/1 flag with a monotonically increasing sequence number the waiter 
 waking. Re-arm must happen on the waiter side *before* the sleep decision, under the same
 lock used to re-check the object value.
 
----
-
-## 3. pthreads backend is fundamentally broken (hangs / lost wake)
-
-`include/wg14_atomic_waits/detail/impl/atomic_wait_pthreads.c.ipp`:
-
-* `..._WAIT` (lines 45–46) is `pthread_cond_wait(&(x)->atomic, pthreads_mutex())`.
-* `pthreads_mutex()` (lines 61–73) still returns a **`_Thread_local` mutex**, i.e. a
-  *different* mutex object per thread, and it is **never locked** by the caller.
-
-Problems (unchanged):
-
-1. **`pthread_cond_wait` requires the passed mutex to be held by the calling thread.**
-   In `atomic_wait_generic` (`atomic_wait_common.ipp.ipp`) the waiter releases the
-   hash-table lock and then calls `pthread_cond_wait` with an unlocked thread-local mutex.
-   Undefined behavior; on glibc it typically fails (EPERM) so the wait “succeeds” without
-   blocking — a busy-loop — with no guarantee the node is protected.
-2. **The broadcast hand-off is not protected by the mutex the waiter sleeps on.** A
-   notifier holds the global hash-table lock and calls `pthread_cond_signal`/`broadcast`
-   (via `..._WAKE`, lines 47–53). The classic lost wake occurs when the notifier signals
-   between the waiter’s re-check (value still equal) and its `pthread_cond_wait`: the
-   signal is dropped and the waiter blocks **forever**. With a futex the kernel’s value
-   re-check/EAGAIN saves this; with `pthread_cond_t` there is no predicate/flag protecting
-   the check, so the wait is a genuine, permanent lost wake (a hang).
-
-Because the test/CI story allows forcing this backend, this path is exercised, and its
-crashes/hangs are exactly the class of lost-wake bug being reported.
+> **Note (fixed):** The pthreads backend previously used a `_Thread_local` mutex that was
+> never locked before `pthread_cond_wait`, plus an unprotected signal — producing busy-loops
+> and permanent lost-wake hangs. That backend now embeds a per-proxy
+> `pthread_mutex_t + pthread_cond_t + pending-token counter` so the wait decision and the
+> signal are serialised by the proxy mutex and any notify that lands before the park is
+> captured as a token. This thread-local/proxy subclass is resolved; only the shared
+> 0/1-flag proxy described above (used by the futex/umtx fallback widths) still has the
+> never-reset race.
 
 ---
 
-## 4. macOS timeout conversion still violates the minimum-duration guarantee for long waits
+## 3. macOS timeout conversion still violates the minimum-duration guarantee for long waits
 
 `atomic_wait_macos.c.ipp`, `wait_on_address32/64` (lines 50–94):
 
@@ -123,7 +106,7 @@ crashes/hangs are exactly the class of lost-wake bug being reported.
 
 ---
 
-## 5. Return-value deviations from the plan
+## 4. Return-value deviations from the plan
 
 * `atomic_notify_32` (`atomic_wait_common.ipp.ipp`) returns `1 + ret` on a successful CAS,
   where `ret` is the number actually woken (0 when nothing is parked). So
@@ -140,7 +123,7 @@ crashes/hangs are exactly the class of lost-wake bug being reported.
 
 ---
 
-## 6. Header-only / ODR notes
+## 5. Header-only / ODR notes
 
 * The `atomic_wait_*_N` / `atomic_notify*_N` **definitions** in `atomic_wait_common.ipp.ipp`
   are still plain (non-`static`, non-`inline`) functions, relying on the prior
@@ -154,7 +137,7 @@ crashes/hangs are exactly the class of lost-wake bug being reported.
 
 ---
 
-## 7. Smaller issues
+## 6. Smaller issues
 
 * **`errno` still clobbered on public return paths despite the wrapper-level fix.** The
   syscall wrappers (`wait_on_address32` etc.) now correctly save/restore `errno`, but the
@@ -162,15 +145,16 @@ crashes/hangs are exactly the class of lost-wake bug being reported.
   on the timeout return and `errno = -ret2` on the error return. Caller `errno` preservation
   was a stated plan requirement (Steps 8–12).
 * **`atomic_notify_generic` drops a notify when no node is registered** (returns 0 when
-  `hash_table_find_or_create(..., increment_use_count=false)` finds nothing). For the futex
-  backends this is masked by the waiter’s under-lock re-check; for the still-broken pthreads
-  backend it is not masked (see Section 3), which is where the drop becomes a hard lost wake.
+  `hash_table_find_or_create(..., increment_use_count=false)` finds nothing). With the
+  pthreads proxy fixed (under-lock re-check + pending tokens) this is now masked on every
+  backend by the waiter’s re-check, so it no longer becomes a hard lost wake — it is simply
+  an under-report of the woken count.
 * **`hash_func` truncates a 64-bit pointer to 32-bit before mixing** (`(unsigned)(uintptr_t)
   key`); not a correctness bug, just avoidable collisions.
 
 ---
 
-## 8. Structure deviations from the plan (non-bug)
+## 7. Structure deviations from the plan (non-bug)
 
 * The plan (Step 7) specified that `atomic_wait`/`atomic_wait_explicit` be thin wrappers
   delegating to `atomic_wait_expected`, and `notify_one`/`notify_all` delegate to a
@@ -184,14 +168,14 @@ crashes/hangs are exactly the class of lost-wake bug being reported.
 
 ---
 
-## 9. Conclusion
+## 8. Conclusion
 
 The implementation fixes the Linux timeout/error handling, the Windows single-wake bug, the
-FreeBSD 8-byte argument order, and the silent width no-op. The **hash-table/fallback proxy
-logic still has a one-way notification flag that is never re-armed**, which is the race
-responsible for lost wakes: waiters that re-park on an already-notified node stop sleeping
-and busy-spin, and subsequent notifications have no sleeping thread to wake. On the pthreads
-backend the same logic is additionally broken by a thread-local mutex and a missing predicate
-under `pthread_cond_wait`, producing hard lost-wake hangs. These are compounded by a macOS
-timeout conversion that still truncates waits longer than ~71 minutes, plus several
-return-value and ODR deviations. All were identified by code inspection only.
+FreeBSD 8-byte argument order, the silent width no-op, and the broken pthreads backend
+(thread-local-mutex UB and lost-wake hangs replaced with a per-proxy mutex/condvar/token
+design). The remaining **hash-table/fallback proxy logic still has a one-way notification
+flag that is never re-armed**, which is the race responsible for lost wakes: waiters that
+re-park on an already-notified node stop sleeping and busy-spin, and subsequent notifications
+have no sleeping thread to wake. These are compounded by a macOS timeout conversion that
+still truncates waits longer than ~71 minutes, plus several return-value and ODR
+deviations. All were identified by code inspection only.
