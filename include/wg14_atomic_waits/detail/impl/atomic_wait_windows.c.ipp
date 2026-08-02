@@ -97,10 +97,18 @@ extern "C"
   unsigned max_threads_to_wake)
   {
     int save_errno = errno;
-    if(WakeByAddressSingle((PVOID) (uintptr_t) object))
+    if(max_threads_to_wake == 1)
+    {
+      if(WakeByAddressSingle((PVOID) (uintptr_t) object))
+      {
+        errno = save_errno;
+        return 1;
+      }
+    }
+    else if(WakeByAddressAll((PVOID) (uintptr_t) object))
     {
       errno = save_errno;
-      return (max_threads_to_wake == 1) ? 1 : 1;
+      return 1;
     }
     errno = save_errno;
     return 0;
@@ -114,10 +122,18 @@ extern "C"
   unsigned max_threads_to_wake)
   {
     int save_errno = errno;
-    if(WakeByAddressSingle((PVOID) (uintptr_t) object))
+    if(max_threads_to_wake == 1)
+    {
+      if(WakeByAddressSingle((PVOID) (uintptr_t) object))
+      {
+        errno = save_errno;
+        return 1;
+      }
+    }
+    else if(WakeByAddressAll((PVOID) (uintptr_t) object))
     {
       errno = save_errno;
-      return (max_threads_to_wake == 1) ? 1 : 1;
+      return 1;
     }
     errno = save_errno;
     return 0;
