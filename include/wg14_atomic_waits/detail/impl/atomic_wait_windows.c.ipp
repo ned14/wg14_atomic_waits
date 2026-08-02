@@ -24,15 +24,19 @@
 #endif
 
 #include "../../atomic_wait.h"
+
+#include <stdint.h>
+
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <stdint.h>
-#include <synchapi.h>
+// MUST come before other Windows only includes
 #include <windows.h>
+
+#include <synchapi.h>
 
 #ifdef __cplusplus
 extern "C"

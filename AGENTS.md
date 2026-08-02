@@ -10,3 +10,7 @@ from `.github/workflows/ci.yml`.
 4. C++ is permitted in `test/` solely for compile-testing the public header
 and verifying `extern "C"` linkage. Do NOT use C++ in any source or header
 file under `include/` or `src/`.
+5. Never, EVER use sleeps alone to synchronise between threads. These
+cause flaky tests. ALWAYS use a proper synchronisation between threads,
+and if you do use proper synchronisation, sleeps within the proper
+synchronisation is permitted.
