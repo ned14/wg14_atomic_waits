@@ -257,21 +257,28 @@ extern "C"
   _WG14_ATOMIC_WAITS_IMPL_atomic_notify_all((object))
 
 #ifdef __cplusplus
-#define _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object)                           \
-  ((void) sizeof(char[(sizeof(*(object)) ==                                            \
-                       sizeof(WG14_ATOMIC_WAITS_PREFIX(                                 \
-                       uint_native_wait_notify_t))) ?                                  \
-                      1 :                                                              \
-                      -1]))
+namespace wg14_atomic_waits {
+template <class T>
+inline int atomic_native_check_helper(T const volatile *object) {
+  static_assert(
+    (sizeof(*object) == sizeof(::WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t))),
+    "wg14_atomic_waits: sizeof(*object) must equal "
+    "sizeof(uint_native_wait_notify_t) (4 bytes)");
+  (void) object;
+  return 0;
+}
+}  // namespace wg14_atomic_waits
+#define _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object)                    \
+  (::wg14_atomic_waits::atomic_native_check_helper((object)))
 #else
-#define _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object)                           \
-  ((void) sizeof(struct {                                                              \
-    _Static_assert((sizeof(*(object)) ==                                               \
-                    sizeof(WG14_ATOMIC_WAITS_PREFIX(                                    \
-                    uint_native_wait_notify_t))),                                      \
-                   "wg14_atomic_waits: sizeof(*object) must equal "                   \
-                   "sizeof(uint_native_wait_notify_t) (4 bytes)");                     \
-    int _unused;                                                                        \
+#define _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object)                    \
+  ((void) sizeof(struct {                                                      \
+    _Static_assert((sizeof(*(object)) ==                                       \
+                    sizeof(WG14_ATOMIC_WAITS_PREFIX(                           \
+                    uint_native_wait_notify_t))),                              \
+                   "wg14_atomic_waits: sizeof(*object) must equal "           \
+                   "sizeof(uint_native_wait_notify_t) (4 bytes)");              \
+    int _unused;                                                                \
   }))
 #endif
 

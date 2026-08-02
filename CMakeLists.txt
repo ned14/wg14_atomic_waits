@@ -17,7 +17,7 @@ enable_testing()
 # /experimental:c11atomics; without it the header fails with
 #   vcruntime_c11_stdatomic.h: error C1189: #error: "C atomic support is not enabled"
 function(wg14_atomic_waits_enable_c11_atomics target)
-  if(MSVC AND MSVC_VERSION LESS 1935)
+  if(MSVC)
     target_compile_options(${target} PRIVATE /experimental:c11atomics)
   endif()
 endfunction()

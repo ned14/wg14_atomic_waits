@@ -59,7 +59,7 @@ endfunction()
 set(COMPILE_FAIL_DIR "compile_fail")
 set(WIDTH_DIAGNOSTIC "must be 1, 2, 4, or 8 bytes")
 set(NATIVE_DIAGNOSTIC_C "must equal sizeof")
-set(NATIVE_DIAGNOSTIC_CPP "size is negative")
+set(NATIVE_DIAGNOSTIC_CPP "must equal sizeof")
 add_compile_fail_test(compile_fail_atomic_wait_c
                       "${COMPILE_FAIL_DIR}/atomic_wait_badtype.c"
                       "${WIDTH_DIAGNOSTIC}")
