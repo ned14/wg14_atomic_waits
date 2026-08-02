@@ -98,11 +98,8 @@ extern "C"
   {
     const int ret = __ulock_wake(
     WG14_ATOMIC_WAITS_UL_COMPARE_AND_WAIT |
-    ((max_threads_to_wake == 1) ? WG14_ATOMIC_WAITS_ULF_WAKE_THREAD :
-                                  WG14_ATOMIC_WAITS_ULF_WAKE_ALL),
-    (uint32_t *) (uintptr_t) object,
-    atomic_load_explicit(object,
-                         WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_relaxed));
+    ((max_threads_to_wake == 1) ? 0 : WG14_ATOMIC_WAITS_ULF_WAKE_ALL),
+    (uint32_t *) (uintptr_t) object, 0);
     return (ret != 0) ? ret : ((max_threads_to_wake == 1) ? 1 : (INT_MAX - 1));
   }
 
@@ -115,11 +112,8 @@ extern "C"
   {
     const int ret = __ulock_wake(
     WG14_ATOMIC_WAITS_UL_COMPARE_AND_WAIT64 |
-    ((max_threads_to_wake == 1) ? WG14_ATOMIC_WAITS_ULF_WAKE_THREAD :
-                                  WG14_ATOMIC_WAITS_ULF_WAKE_ALL),
-    (uint64_t *) (uintptr_t) object,
-    atomic_load_explicit(object,
-                         WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_relaxed));
+    ((max_threads_to_wake == 1) ? 0 : WG14_ATOMIC_WAITS_ULF_WAKE_ALL),
+    (uint64_t *) (uintptr_t) object, 0);
     return (ret != 0) ? ret : ((max_threads_to_wake == 1) ? 1 : (INT_MAX - 1));
   }
 
