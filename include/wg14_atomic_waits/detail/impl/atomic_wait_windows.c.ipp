@@ -39,6 +39,50 @@ extern "C"
 {
 #endif
 
+#define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_8 1
+  // Returns -errno if failed, 0 if success
+  static WG14_ATOMIC_WAITS_INLINE int
+  WG14_ATOMIC_WAITS_PREFIX(wait_on_address8)(
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object,
+  uint_least8_t expected, const struct timespec *duration)
+  {
+    DWORD timeout_ms = INFINITE;
+    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+    {
+      ULONGLONG ms = (ULONGLONG) duration->tv_sec * 1000ull +
+                     (duration->tv_nsec + 999999ull) / 1000000ull;
+      timeout_ms = (ms > 0xFFFFFFFFull) ? INFINITE : (DWORD) ms;
+    }
+    if(WaitOnAddress((PVOID) (uintptr_t) object, &expected, 1, timeout_ms))
+    {
+      return 0;
+    }
+    DWORD lasterr = GetLastError();
+    return (lasterr == ERROR_TIMEOUT) ? -ETIME : -1;
+  }
+
+#define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_16 1
+  // Returns -errno if failed, 0 if success
+  static WG14_ATOMIC_WAITS_INLINE int
+  WG14_ATOMIC_WAITS_PREFIX(wait_on_address16)(
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object,
+  uint_least16_t expected, const struct timespec *duration)
+  {
+    DWORD timeout_ms = INFINITE;
+    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+    {
+      ULONGLONG ms = (ULONGLONG) duration->tv_sec * 1000ull +
+                     (duration->tv_nsec + 999999ull) / 1000000ull;
+      timeout_ms = (ms > 0xFFFFFFFFull) ? INFINITE : (DWORD) ms;
+    }
+    if(WaitOnAddress((PVOID) (uintptr_t) object, &expected, 2, timeout_ms))
+    {
+      return 0;
+    }
+    DWORD lasterr = GetLastError();
+    return (lasterr == ERROR_TIMEOUT) ? -ETIME : -1;
+  }
+
 #define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32 1
   // Returns -errno if failed, 0 if success
   static WG14_ATOMIC_WAITS_INLINE int
@@ -53,14 +97,11 @@ extern "C"
                      (duration->tv_nsec + 999999ull) / 1000000ull;
       timeout_ms = (ms > 0xFFFFFFFFull) ? INFINITE : (DWORD) ms;
     }
-    int save_errno = errno;
     if(WaitOnAddress((PVOID) (uintptr_t) object, &expected, 4, timeout_ms))
     {
-      errno = save_errno;
       return 0;
     }
     DWORD lasterr = GetLastError();
-    errno = save_errno;
     return (lasterr == ERROR_TIMEOUT) ? -ETIME : -1;
   }
 
@@ -78,15 +119,54 @@ extern "C"
                      (duration->tv_nsec + 999999ull) / 1000000ull;
       timeout_ms = (ms > 0xFFFFFFFFull) ? INFINITE : (DWORD) ms;
     }
-    int save_errno = errno;
     if(WaitOnAddress((PVOID) (uintptr_t) object, &expected, 8, timeout_ms))
     {
-      errno = save_errno;
       return 0;
     }
     DWORD lasterr = GetLastError();
-    errno = save_errno;
     return (lasterr == ERROR_TIMEOUT) ? -ETIME : -1;
+  }
+
+#define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_8 1
+  // Returns -errno if failed, number of threads woken if success
+  static WG14_ATOMIC_WAITS_INLINE int
+  WG14_ATOMIC_WAITS_PREFIX(wake_by_address8)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object,
+  unsigned max_threads_to_wake)
+  {
+    if(max_threads_to_wake == 1)
+    {
+      if(WakeByAddressSingle((PVOID) (uintptr_t) object))
+      {
+        return 1;
+      }
+    }
+    else if(WakeByAddressAll((PVOID) (uintptr_t) object))
+    {
+      return 1;
+    }
+    return 0;
+  }
+
+#define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_16 1
+  // Returns -errno if failed, number of threads woken if success
+  static WG14_ATOMIC_WAITS_INLINE int
+  WG14_ATOMIC_WAITS_PREFIX(wake_by_address16)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object,
+  unsigned max_threads_to_wake)
+  {
+    if(max_threads_to_wake == 1)
+    {
+      if(WakeByAddressSingle((PVOID) (uintptr_t) object))
+      {
+        return 1;
+      }
+    }
+    else if(WakeByAddressAll((PVOID) (uintptr_t) object))
+    {
+      return 1;
+    }
+    return 0;
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_32 1
@@ -96,21 +176,17 @@ extern "C"
   volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
   unsigned max_threads_to_wake)
   {
-    int save_errno = errno;
     if(max_threads_to_wake == 1)
     {
       if(WakeByAddressSingle((PVOID) (uintptr_t) object))
       {
-        errno = save_errno;
         return 1;
       }
     }
     else if(WakeByAddressAll((PVOID) (uintptr_t) object))
     {
-      errno = save_errno;
       return 1;
     }
-    errno = save_errno;
     return 0;
   }
 
@@ -121,21 +197,17 @@ extern "C"
   volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
   unsigned max_threads_to_wake)
   {
-    int save_errno = errno;
     if(max_threads_to_wake == 1)
     {
       if(WakeByAddressSingle((PVOID) (uintptr_t) object))
       {
-        errno = save_errno;
         return 1;
       }
     }
     else if(WakeByAddressAll((PVOID) (uintptr_t) object))
     {
-      errno = save_errno;
       return 1;
     }
-    errno = save_errno;
     return 0;
   }
 
