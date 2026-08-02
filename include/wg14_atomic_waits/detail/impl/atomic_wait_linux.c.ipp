@@ -34,42 +34,46 @@ extern "C"
 #endif
 
 #define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32 1
-static WG14_ATOMIC_WAITS_INLINE int
-WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(
-const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
-uint_least32_t expected, const struct timespec *abs_timeout)
-{
+  // Returns -errno if failed, 0 if success
+  static WG14_ATOMIC_WAITS_INLINE int
+  WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(
+  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
+  uint_least32_t expected, const struct timespec *abs_timeout)
+  {
     int save_errno = errno;
     int ret = (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT,
                             (int) expected, abs_timeout, NULL, 0);
-    if(ret == 0 || errno == EAGAIN || errno == EINTR)
+    if(ret == 0)
     {
         errno = save_errno;
         return 0;
     }
+    int e = errno;
     errno = save_errno;
-    return -1;
-}
+    return -e;
+  }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_64 0
 
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_32 1
-static WG14_ATOMIC_WAITS_INLINE int
-WG14_ATOMIC_WAITS_PREFIX(wake_by_address32)(
-volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
-unsigned max_threads_to_wake)
-{
+  // Returns -errno if failed, number of threads woken if success
+  static WG14_ATOMIC_WAITS_INLINE int
+  WG14_ATOMIC_WAITS_PREFIX(wake_by_address32)(
+  volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
+  unsigned max_threads_to_wake)
+  {
     int save_errno = errno;
     long ret = syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAKE,
                        (int) max_threads_to_wake, NULL, NULL, 0);
     if(ret < 0)
     {
+        int e = errno;
         errno = save_errno;
-        return 0;
+        return -e;
     }
     errno = save_errno;
     return (int) ret;
-}
+  }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_64 0
 

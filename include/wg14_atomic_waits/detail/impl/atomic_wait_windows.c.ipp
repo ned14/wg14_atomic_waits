@@ -61,7 +61,7 @@ extern "C"
     }
     DWORD lasterr = GetLastError();
     errno = save_errno;
-    return (lasterr == ERROR_TIMEOUT) ? -ETIMEDOUT : -1;
+    return (lasterr == ERROR_TIMEOUT) ? -ETIME : -1;
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_64 1
@@ -86,7 +86,7 @@ extern "C"
     }
     DWORD lasterr = GetLastError();
     errno = save_errno;
-    return (lasterr == ERROR_TIMEOUT) ? -ETIMEDOUT : -1;
+    return (lasterr == ERROR_TIMEOUT) ? -ETIME : -1;
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_32 1

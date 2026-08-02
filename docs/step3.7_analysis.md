@@ -46,7 +46,7 @@ Cache R 712,064 · W 0 · Hit Rate 87.6%
 
 **Plan:** "Return negative on error."
 
-**Actual:** `wait_on_address32` on Linux always returns `-1` on any failure, losing the distinction between `ETIMEDOUT` and other errors. `atomic_wait_expected_32` then returns `-1` with `errno = 1` (because `-ret2 = -(-1) = 1`) for any error, including timeout. The code compares `ret2 != ETIME && ret2 != ETIMEDOUT`, but `ret2` is always `-1`, so the check never matches the positive `ETIMEDOUT` value.
+**Actual:** `wait_on_address32` on Linux always returns `-1` on any failure, losing the distinction between `ETIMEDOUT` and other errors. `atomic_wait_expected_32` then returns `-1` with `errno = 1` (because `-ret2 = -(-1) = 1`) for any error, including timeout. The code compares `ret2 != ETIME && ret2 != `, but `ret2` is always `-1`, so the check never matches the positive `ETIMEDOUT` value.
 
 **Files:** `include/wg14_atomic_waits/detail/impl/atomic_wait_linux.c.ipp:50`, `include/wg14_atomic_waits/detail/impl/atomic_wait_common.ipp.ipp:653-659`
 

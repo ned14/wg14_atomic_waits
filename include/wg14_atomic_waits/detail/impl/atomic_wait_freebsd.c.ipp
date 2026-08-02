@@ -56,13 +56,14 @@ extern "C"
     }
     int ret = _umtx_op((volatile void *) (uintptr_t) object, UMTX_OP_WAIT_UINT,
                        expected, (long) &umtx_time);
-    if(ret == 0 || errno == EAGAIN || errno == EINTR)
+    if(ret == 0)
     {
       errno = save_errno;
       return 0;
     }
+    int e = errno;
     errno = save_errno;
-    return -1;
+    return -e;
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_64 1
@@ -87,13 +88,14 @@ extern "C"
     }
     int ret = _umtx_op((volatile void *) (uintptr_t) object, UMTX_OP_WAIT,
                        (long) &umtx_time, (long) expected);
-    if(ret == 0 || errno == EAGAIN || errno == EINTR)
+    if(ret == 0)
     {
       errno = save_errno;
       return 0;
     }
+    int e = errno;
     errno = save_errno;
-    return -1;
+    return -e;
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_32 1

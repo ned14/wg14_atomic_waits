@@ -398,7 +398,7 @@ extern "C"
         if(now.tv_sec > end.tv_sec ||
            (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
         {
-          errno = ETIMEDOUT;
+          errno = ETIME;
           return 0;
         }
         ts_remaining.tv_sec = end.tv_sec - now.tv_sec;
@@ -414,9 +414,11 @@ extern "C"
       item, (duration != WG14_ATOMIC_WAITS_NULLPTR) ?
             &ts_remaining :
             WG14_ATOMIC_WAITS_NULLPTR);
-      if(ret2 < 0)
+      if(ret2 < 0 && ret2 != -EAGAIN && ret2 != -EINTR && ret2 != -ETIME &&
+         ret2 != -ETIMEDOUT)
       {
-        return ret2;
+        errno = -ret2;
+        return -1;
       }
       order = success;
     }
@@ -636,7 +638,7 @@ extern "C"
         if(now.tv_sec > end.tv_sec ||
            (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
         {
-          errno = ETIMEDOUT;
+          errno = ETIME;
           return 0;
         }
         ts_remaining.tv_sec = end.tv_sec - now.tv_sec;
@@ -652,14 +654,11 @@ extern "C"
       object, *expected,
       (duration != WG14_ATOMIC_WAITS_NULLPTR) ? &ts_remaining :
                                                 WG14_ATOMIC_WAITS_NULLPTR);
-      if(ret2 < 0)
+      if(ret2 < 0 && ret2 != -EAGAIN && ret2 != -EINTR && ret2 != -ETIME &&
+         ret2 != -ETIMEDOUT)
       {
-        if(duration != WG14_ATOMIC_WAITS_NULLPTR && ret2 != ETIME &&
-           ret2 != ETIMEDOUT)
-        {
-          errno = -ret2;
-          return -1;
-        }
+        errno = -ret2;
+        return -1;
       }
       order = success;
     }
