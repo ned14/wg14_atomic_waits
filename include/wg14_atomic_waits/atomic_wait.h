@@ -104,9 +104,22 @@ extern "C"
 }
 #endif
 
+#ifdef __cplusplus
+#define _WG14_ATOMIC_WAITS_STATIC_ASSERT(cond, msg) static_assert((cond), msg)
+#else
+#define _WG14_ATOMIC_WAITS_STATIC_ASSERT(cond, msg) _Static_assert((cond), msg)
+#endif
+
+#define _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(object)                       \
+  _WG14_ATOMIC_WAITS_STATIC_ASSERT(                                             \
+  ((sizeof(*(object)) == 1) || (sizeof(*(object)) == 2) ||                       \
+   (sizeof(*(object)) == 4) || (sizeof(*(object)) == 8)),                        \
+  "wg14_atomic_waits: sizeof(*object) must be 1, 2, 4, or 8 bytes")
+
 #define _WG14_ATOMIC_WAITS_IMPL_atomic_wait(object, expected)                  \
   do                                                                           \
   {                                                                            \
+    _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(object);                        \
     if(sizeof(*(object)) == 1)                                                 \
       WG14_ATOMIC_WAITS_PREFIX(atomic_wait_1)(                                 \
       (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t     \
@@ -136,6 +149,7 @@ extern "C"
 #define _WG14_ATOMIC_WAITS_IMPL_atomic_wait_explicit(object, expected, order)  \
   do                                                                           \
   {                                                                            \
+    _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(object);                        \
     if(sizeof(*(object)) == 1)                                                 \
       WG14_ATOMIC_WAITS_PREFIX(atomic_wait_1)(                                 \
       (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t     \
@@ -161,6 +175,7 @@ extern "C"
 #define _WG14_ATOMIC_WAITS_IMPL_atomic_notify_one(object)                      \
   do                                                                           \
   {                                                                            \
+    _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(object);                        \
     if(sizeof(*(object)) == 1)                                                 \
       WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one_1)(                           \
       (volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t           \
@@ -182,6 +197,7 @@ extern "C"
 #define _WG14_ATOMIC_WAITS_IMPL_atomic_notify_all(object)                      \
   do                                                                           \
   {                                                                            \
+    _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(object);                        \
     if(sizeof(*(object)) == 1)                                                 \
       WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all_1)(                           \
       (volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t           \
@@ -240,15 +256,24 @@ extern "C"
 #define atomic_notify_all(object)                                              \
   _WG14_ATOMIC_WAITS_IMPL_atomic_notify_all((object))
 
-#define _WG14_ATOMIC_WAITS_IMPL_atomic_wait_expected_check(object)                          \
-  ((void) sizeof(struct {                                                                   \
-    int                                                                                     \
-    _WG14_ATOMIC_WAITS_IMPL_atomic_wait_expected_width_must_match_uint_native_wait_notify_t \
-        : (sizeof(*(object)) ==                                                             \
-           sizeof(WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t))) ?                   \
-          1 :                                                                               \
-          -1;                                                                               \
+#ifdef __cplusplus
+#define _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object)                           \
+  ((void) sizeof(char[(sizeof(*(object)) ==                                            \
+                       sizeof(WG14_ATOMIC_WAITS_PREFIX(                                 \
+                       uint_native_wait_notify_t))) ?                                  \
+                      1 :                                                              \
+                      -1]))
+#else
+#define _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object)                           \
+  ((void) sizeof(struct {                                                              \
+    _Static_assert((sizeof(*(object)) ==                                               \
+                    sizeof(WG14_ATOMIC_WAITS_PREFIX(                                    \
+                    uint_native_wait_notify_t))),                                      \
+                   "wg14_atomic_waits: sizeof(*object) must equal "                   \
+                   "sizeof(uint_native_wait_notify_t) (4 bytes)");                     \
+    int _unused;                                                                        \
   }))
+#endif
 
   //! Wait up to `duration` for `*object` to no longer equal `*expected`.
   /*! \details
@@ -270,23 +295,13 @@ extern "C"
   */
 #define atomic_wait_expected(object, expected, duration, success, failure)        \
   (                                                                               \
-  _WG14_ATOMIC_WAITS_IMPL_atomic_wait_expected_check(object),                     \
+  _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object),                            \
   WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected_32)(                              \
   (                                                                               \
-  const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_native_wait_notify_t \
+  const volatile WG14_ATOMIC_WAITS_PREFIX(atomic_uint_native_wait_notify_t)     \
   *) (object),                                                                    \
   (WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) *) (expected),             \
   (duration), (success), (failure)))
-
-#define _WG14_ATOMIC_WAITS_IMPL_atomic_notify_check(object)                          \
-  ((void) sizeof(struct {                                                            \
-    int                                                                              \
-    _WG14_ATOMIC_WAITS_IMPL_atomic_notify_width_must_match_uint_native_wait_notify_t \
-        : (sizeof(*(object)) ==                                                      \
-           sizeof(WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t))) ?            \
-          1 :                                                                        \
-          -1;                                                                        \
-  }))
 
   //! Atomically compare-exchange and notify up to `max_threads_to_wake` waiters.
   /*! \details
@@ -309,10 +324,10 @@ extern "C"
 #define atomic_notify(object, expected, desired, max_threads_to_wake, success, \
                       failure)                                                 \
   (                                                                            \
-  _WG14_ATOMIC_WAITS_IMPL_atomic_notify_check(object),                         \
+  _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object),                            \
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_32)(                                  \
-  (volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_native_wait_notify_t   \
-   *) (object),                                                                \
+  (volatile WG14_ATOMIC_WAITS_PREFIX(atomic_uint_native_wait_notify_t) *)        \
+  (object),                                                                       \
   (WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) *) (expected),          \
   (desired), (max_threads_to_wake), (success), (failure)))
 
