@@ -269,6 +269,7 @@ extern "C"
           abort();
         }
         free(bucket->proxy);
+        memset(bucket, 0, sizeof(*bucket));
         for(step++; step < table->bucket_count; step++)
         {
           const unsigned idx = (h + step * step) & (table->bucket_count - 1);

@@ -11,6 +11,17 @@ project(wg14_atomic_waits LANGUAGES C CXX)
 include(GNUInstallDirs)
 enable_testing()
 
+# MSVC provides C11 atomics (<stdatomic.h> -> vcruntime_c11_stdatomic.h) only
+# when atomics support is enabled. VS2022 17.5+ (MSVC >= 19.35) enables them
+# for /std:c11 without an extra flag, but older toolchains additionally require
+# /experimental:c11atomics; without it the header fails with
+#   vcruntime_c11_stdatomic.h: error C1189: #error: "C atomic support is not enabled"
+function(wg14_atomic_waits_enable_c11_atomics target)
+  if(MSVC AND MSVC_VERSION LESS 1935)
+    target_compile_options(${target} PRIVATE /experimental:c11atomics)
+  endif()
+endfunction()
+
 set(LIBRARY_SOURCES
   $<$<AND:$<PLATFORM_ID:Windows>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_windows.c>
   $<$<AND:$<PLATFORM_ID:Darwin>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_macos.c>
@@ -25,6 +36,7 @@ if(HEADER_ONLY_BUILD)
   target_compile_definitions(${PROJECT_NAME} PUBLIC WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY)
 endif()
 target_compile_features(${PROJECT_NAME} PRIVATE c_std_11 cxx_std_11)
+wg14_atomic_waits_enable_c11_atomics(${PROJECT_NAME})
 target_compile_definitions(${PROJECT_NAME} PRIVATE WG14_ATOMIC_WAITS_SOURCE)
 if(NOT MSVC)
   target_compile_definitions(${PROJECT_NAME} PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700 _GNU_SOURCE)
@@ -87,6 +99,7 @@ if(PROJECT_IS_TOP_LEVEL AND (NOT DEFINED BUILD_TESTING OR BUILD_TESTING))
       target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     target_compile_features(${target} PRIVATE ${ADD_EXAMPLE_FEATURES})
+    wg14_atomic_waits_enable_c11_atomics(${target})
     target_link_libraries(${target} PRIVATE ${PROJECT_NAME})
     set_target_properties(${target} PROPERTIES
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
