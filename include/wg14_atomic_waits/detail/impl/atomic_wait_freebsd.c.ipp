@@ -87,7 +87,7 @@ extern "C"
       umtx_time._flags = 0;
     }
     int ret = _umtx_op((volatile void *) (uintptr_t) object, UMTX_OP_WAIT,
-                       (long) &umtx_time, (long) expected);
+                       (long) expected, (long) &umtx_time);
     if(ret == 0)
     {
       errno = save_errno;
