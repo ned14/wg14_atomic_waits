@@ -52,6 +52,7 @@ extern "C"
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
   uint_least32_t expected, const struct timespec *ts)
   {
+    int save_errno = errno;
     uint32_t timeout_us = 0;
     if(ts != WG14_ATOMIC_WAITS_NULLPTR)
     {
@@ -66,7 +67,16 @@ extern "C"
     const int ret = __ulock_wait(WG14_ATOMIC_WAITS_UL_COMPARE_AND_WAIT,
                                  (uint32_t *) (uintptr_t) object,
                                  (uint64_t) expected, timeout_us);
-    return ret;
+    if(ret == 0)
+    {
+      errno = save_errno;
+      return 0;
+    }
+    // __ulock_wait returns -1 and sets errno; report it as -errno like the
+    // other backends so callers can distinguish retryable conditions.
+    const int e = errno;
+    errno = save_errno;
+    return -e;
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_64 1
@@ -76,6 +86,7 @@ extern "C"
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
   uint_least64_t expected, const struct timespec *ts)
   {
+    int save_errno = errno;
     uint32_t timeout_us = 0;
     if(ts != WG14_ATOMIC_WAITS_NULLPTR)
     {
@@ -90,7 +101,16 @@ extern "C"
     const int ret = __ulock_wait(WG14_ATOMIC_WAITS_UL_COMPARE_AND_WAIT64,
                                  (uint64_t *) (uintptr_t) object,
                                  (uint64_t) expected, timeout_us);
-    return ret;
+    if(ret == 0)
+    {
+      errno = save_errno;
+      return 0;
+    }
+    // __ulock_wait returns -1 and sets errno; report it as -errno like the
+    // other backends so callers can distinguish retryable conditions.
+    const int e = errno;
+    errno = save_errno;
+    return -e;
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_32 1

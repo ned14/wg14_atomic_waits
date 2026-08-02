@@ -28,9 +28,13 @@ original review and are no longer listed: the Linux `atomic_wait_expected`
 timeout-misreported-as-error bug (now returns cleanly), the Windows single-wake bug (now
 uses `WakeByAddressAll` for `max > 1`), the FreeBSD 8-byte `UMTX_OP_WAIT` argument-order
 swap (now consistent with the 4-byte call), the silent width-dispatch no-op (now a
-`_Static_assert`), and the broken pthreads backend (now a self-contained per-proxy
+`_Static_assert`), the broken pthreads backend (now a self-contained per-proxy
 mutex + condvar + wake-token counter that serialises the wait decision and the signal,
-eliminating the unlocked thread-local mutex and the lost-wake race).
+eliminating the unlocked thread-local mutex and the lost-wake race), and the macOS
+timeout path (the `wait_on_address32/64` wrappers now return `-errno` instead of the raw
+`__ulock_wait` result, so clean timeouts are reported as `0` rather than `-1`, and the
+shared caller’s re-loop accumulates to the absolute deadline even when a single
+`ulock_wait` call is capped, preserving the minimum-duration guarantee).
 
 ---
 
@@ -87,26 +91,7 @@ lock used to re-check the object value.
 
 ---
 
-## 3. macOS timeout conversion still violates the minimum-duration guarantee for long waits
-
-`atomic_wait_macos.c.ipp`, `wait_on_address32/64` (lines 50–94):
-
-* The plan (Step 11) requires: `*duration` → **nanoseconds**, cap each `ulock_wait` call at
-  `UINT32_MAX` ns (~4.29 s) and **loop** for longer durations.
-* The implementation converts once to **microseconds** (`tv_sec * 1000000 + tv_nsec /
-  1000`), caps at `UINT32_MAX` **µs**, and makes **a single call with no loop**. While the
-  overflow bug is gone (the µs value is now capped at `UINT32_MAX` ≈ 71.6 minutes), any
-  `*duration` longer than ~71.6 minutes is silently truncated to that cap rather than being
-  split across multiple calls, so the total accumulated wait can be far shorter than
-  `*duration` — still violating the proposal’s “total accumulated time … shall be at least
-  `*duration`”.
-* The code still declares private `extern __ulock_wait` / `extern __ulock_wake` instead of
-  including `<bsd/sys/ulock.h>` as the plan directs; functional risk if SDK/version
-  behaviour differs.
-
----
-
-## 4. Return-value deviations from the plan
+## 3. Return-value deviations from the plan
 
 * `atomic_notify_32` (`atomic_wait_common.ipp.ipp`) returns `1 + ret` on a successful CAS,
   where `ret` is the number actually woken (0 when nothing is parked). So
@@ -123,7 +108,7 @@ lock used to re-check the object value.
 
 ---
 
-## 5. Header-only / ODR notes
+## 4. Header-only / ODR notes
 
 * The `atomic_wait_*_N` / `atomic_notify*_N` **definitions** in `atomic_wait_common.ipp.ipp`
   are still plain (non-`static`, non-`inline`) functions, relying on the prior
@@ -137,7 +122,7 @@ lock used to re-check the object value.
 
 ---
 
-## 6. Smaller issues
+## 5. Smaller issues
 
 * **`errno` still clobbered on public return paths despite the wrapper-level fix.** The
   syscall wrappers (`wait_on_address32` etc.) now correctly save/restore `errno`, but the
@@ -154,7 +139,7 @@ lock used to re-check the object value.
 
 ---
 
-## 7. Structure deviations from the plan (non-bug)
+## 6. Structure deviations from the plan (non-bug)
 
 * The plan (Step 7) specified that `atomic_wait`/`atomic_wait_explicit` be thin wrappers
   delegating to `atomic_wait_expected`, and `notify_one`/`notify_all` delegate to a
@@ -168,14 +153,15 @@ lock used to re-check the object value.
 
 ---
 
-## 8. Conclusion
+## 7. Conclusion
 
 The implementation fixes the Linux timeout/error handling, the Windows single-wake bug, the
-FreeBSD 8-byte argument order, the silent width no-op, and the broken pthreads backend
+FreeBSD 8-byte argument order, the silent width no-op, the broken pthreads backend
 (thread-local-mutex UB and lost-wake hangs replaced with a per-proxy mutex/condvar/token
-design). The remaining **hash-table/fallback proxy logic still has a one-way notification
-flag that is never re-armed**, which is the race responsible for lost wakes: waiters that
-re-park on an already-notified node stop sleeping and busy-spin, and subsequent notifications
-have no sleeping thread to wake. These are compounded by a macOS timeout conversion that
-still truncates waits longer than ~71 minutes, plus several return-value and ODR
-deviations. All were identified by code inspection only.
+design), and the macOS timeout path (wrappers now return `-errno`, so clean timeouts return
+`0` and long waits accumulate to the absolute deadline). The remaining
+**hash-table/fallback proxy logic still has a one-way notification flag that is never
+re-armed**, which is the race responsible for lost wakes: waiters that re-park on an
+already-notified node stop sleeping and busy-spin, and subsequent notifications have no
+sleeping thread to wake. These are compounded by several return-value and ODR deviations.
+All were identified by code inspection only.
