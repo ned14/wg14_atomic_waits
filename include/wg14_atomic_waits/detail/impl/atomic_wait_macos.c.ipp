@@ -55,7 +55,9 @@ extern "C"
     uint32_t timeout_us = 0;
     if(ts != WG14_ATOMIC_WAITS_NULLPTR)
     {
-      timeout_us = ts->tv_sec * 1000000U + ts->tv_nsec / 1000U;
+      uint64_t us = ((uint64_t) ts->tv_sec) * 1000000ull +
+                    (((uint64_t) ts->tv_nsec) + 999ull) / 1000ull;
+      timeout_us = (us > UINT32_MAX) ? UINT32_MAX : (uint32_t) us;
       if(timeout_us == 0)
       {
         timeout_us = 1;
@@ -77,7 +79,9 @@ extern "C"
     uint32_t timeout_us = 0;
     if(ts != WG14_ATOMIC_WAITS_NULLPTR)
     {
-      timeout_us = ts->tv_sec * 1000000U + ts->tv_nsec / 1000U;
+      uint64_t us = ((uint64_t) ts->tv_sec) * 1000000ull +
+                    (((uint64_t) ts->tv_nsec) + 999ull) / 1000ull;
+      timeout_us = (us > UINT32_MAX) ? UINT32_MAX : (uint32_t) us;
       if(timeout_us == 0)
       {
         timeout_us = 1;
