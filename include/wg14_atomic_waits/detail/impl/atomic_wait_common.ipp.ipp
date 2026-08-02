@@ -80,7 +80,7 @@ extern "C"
 
   // There must be exactly one of these in the whole process
   WG14_ATOMIC_WAITS_EXTERN_IMPL
-  WG14_ATOMIC_WAITS_IGNORE_MULTIPLE_DEFINITIONS
+  WG14_ATOMIC_WAITS_DEFAULT_VISIBILITY
   WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *
   WG14_ATOMIC_WAITS_PREFIX(hash_table)(void);
 
