@@ -82,6 +82,9 @@ extern "C"
   WG14_ATOMIC_WAITS_EXTERN_IMPL
   WG14_ATOMIC_WAITS_IGNORE_MULTIPLE_DEFINITIONS
   WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *
+  WG14_ATOMIC_WAITS_PREFIX(hash_table)(void);
+
+  WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *
   WG14_ATOMIC_WAITS_PREFIX(hash_table)(void)
   {
     static WG14_ATOMIC_WAITS_PREFIX(hash_table_t) table;
@@ -272,9 +275,9 @@ extern "C"
         memset(bucket, 0, sizeof(*bucket));
         for(step++; step < table->bucket_count; step++)
         {
-          const unsigned idx = (h + step * step) & (table->bucket_count - 1);
+          const unsigned idx2 = (h + step * step) & (table->bucket_count - 1);
           WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *next_bucket =
-          &table->buckets[idx];
+          &table->buckets[idx2];
           if(next_bucket->key != WG14_ATOMIC_WAITS_NULLPTR)
           {
             *bucket = *next_bucket;
@@ -326,6 +329,32 @@ extern "C"
   }
 
 
+  static WG14_ATOMIC_WAITS_INLINE void
+  WG14_ATOMIC_WAITS_PREFIX(monotonic_now)(struct timespec *ts)
+  {
+#if defined(_WIN32) || defined(_WIN64)
+    // MSVC's CRT provides neither clock_gettime nor CLOCK_MONOTONIC, so use
+    // the Win32 high-resolution monotonic counter instead.
+    //
+    // QueryPerformanceFrequency returns a constant non-zero value for the
+    // life of the process, so cache it. Zero also serves as the
+    // not-yet-initialised sentinel. The shared library is compiled in a
+    // single translation unit, so exactly one cache exists per process.
+    static LARGE_INTEGER freq;
+    if(freq.QuadPart == 0)
+    {
+      QueryPerformanceFrequency(&freq);
+    }
+    LARGE_INTEGER count;
+    QueryPerformanceCounter(&count);
+    ts->tv_sec = (time_t) (count.QuadPart / freq.QuadPart);
+    ts->tv_nsec =
+    (long) (((count.QuadPart % freq.QuadPart) * 1000000000L) / freq.QuadPart);
+#else
+  (void) clock_gettime(CLOCK_MONOTONIC, ts);
+#endif
+  }
+
   static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(
   atomic_wait_generic)(const volatile void *object, size_t bytes,
                        void *expected, const struct timespec *duration,
@@ -337,7 +366,7 @@ extern "C"
     if(duration != WG14_ATOMIC_WAITS_NULLPTR)
     {
       struct timespec now;
-      clock_gettime(CLOCK_MONOTONIC, &now);
+      WG14_ATOMIC_WAITS_PREFIX(monotonic_now)(&now);
       end.tv_sec = now.tv_sec + duration->tv_sec;
       end.tv_nsec = now.tv_nsec + duration->tv_nsec;
       if(end.tv_nsec >= 1000000000)
@@ -395,7 +424,7 @@ extern "C"
       if(duration != WG14_ATOMIC_WAITS_NULLPTR)
       {
         struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
+        WG14_ATOMIC_WAITS_PREFIX(monotonic_now)(&now);
         if(now.tv_sec > end.tv_sec ||
            (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
         {
@@ -513,7 +542,7 @@ extern "C"
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
   uint_least64_t expected, memory_order order)
   {
-#if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_8
+#if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_64
     while(atomic_load_explicit(object, order) == expected)
     {
       (void) WG14_ATOMIC_WAITS_PREFIX(
@@ -611,7 +640,7 @@ extern "C"
     if(duration != WG14_ATOMIC_WAITS_NULLPTR)
     {
       struct timespec now;
-      clock_gettime(CLOCK_MONOTONIC, &now);
+      WG14_ATOMIC_WAITS_PREFIX(monotonic_now)(&now);
       end.tv_sec = now.tv_sec + duration->tv_sec;
       end.tv_nsec = now.tv_nsec + duration->tv_nsec;
       if(end.tv_nsec >= 1000000000)
@@ -635,7 +664,7 @@ extern "C"
       if(duration != WG14_ATOMIC_WAITS_NULLPTR)
       {
         struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
+        WG14_ATOMIC_WAITS_PREFIX(monotonic_now)(&now);
         if(now.tv_sec > end.tv_sec ||
            (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
         {
