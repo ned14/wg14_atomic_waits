@@ -29,6 +29,10 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE WG14_ATOMIC_WAITS_SOURCE)
 if(NOT MSVC)
   target_compile_definitions(${PROJECT_NAME} PRIVATE _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700 _GNU_SOURCE)
 endif()
+if(WIN32)
+  # WaitOnAddress/WakeByAddress* require Windows 8 (0x0602) SDK declarations
+  target_compile_definitions(${PROJECT_NAME} PUBLIC _WIN32_WINNT=0x0602 WINVER=0x0602)
+endif()
 
 # Suppress warnings inside backends that intentionally use volatile-to-void* cast:
 if(MSVC)
