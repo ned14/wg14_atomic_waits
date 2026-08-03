@@ -1,18 +1,20 @@
 /* Proposed WG14 atomic wait/notify support
-   (C) 2026 Niall Douglas <http://www.nedproductions.biz/>
-   File Created: Jul 2026
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License in the accompanying file
-   Licence.txt or at
+(C) 2026 Niall Douglas <http://www.nedproductions.biz/>
+File Created: Jul 2026
 
-   http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License in the accompanying file
+Licence.txt or at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 */
 
 #ifndef WG14_ATOMIC_WAITS_LINUX_IMPL_GUARD
@@ -41,11 +43,36 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
-  uint_least32_t expected, const struct timespec *abs_timeout)
+  uint_least32_t expected, const struct timespec *duration)
   {
     int save_errno = errno;
-    int ret = (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT,
-                            (int) expected, abs_timeout, NULL, 0);
+    // The shared implementation passes a relative remaining duration (NULL for
+    // an infinite wait), but FUTEX_WAIT only accepts an absolute
+    // CLOCK_MONOTONIC deadline. Convert the relative duration to an absolute
+    // one here, otherwise a small relative value would be interpreted as a
+    // deadline in the distant past and the wait would return immediately
+    // (busy-spinning until expiry).
+    int ret;
+    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+    {
+      struct timespec now;
+      struct timespec abstime;
+      (void) clock_gettime(CLOCK_MONOTONIC, &now);
+      abstime.tv_sec = now.tv_sec + duration->tv_sec;
+      abstime.tv_nsec = now.tv_nsec + duration->tv_nsec;
+      if(abstime.tv_nsec >= 1000000000L)
+      {
+        abstime.tv_sec++;
+        abstime.tv_nsec -= 1000000000L;
+      }
+      ret = (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT,
+                          (int) expected, &abstime, NULL, 0);
+    }
+    else
+    {
+      ret = (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT,
+                          (int) expected, NULL, NULL, 0);
+    }
     if(ret == 0)
     {
       errno = save_errno;

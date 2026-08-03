@@ -17,6 +17,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/** @file atomic_wait.h
+ *  \brief Proposed WG14 atomic wait/notify support (C11 / C++11 and later).
+ *  \details
+ *
+ *  Provides the proposed WG14 atomic wait/notify API: \c atomic_wait,
+ *  \c atomic_wait_explicit, \c atomic_notify_one, \c atomic_notify_all,
+ *  \c atomic_wait_expected and \c atomic_notify. They suspend and wake
+ *  \e threads within a single address space.
+ *
+ *  \section scope_process Process scope
+ *  Wait/notify synchronises threads of the calling process only; it is not
+ *  guaranteed to synchronise across processes sharing memory
+ *  (e.g. \c mmap(MAP_SHARED)):
+ *  - On Linux the native 4-byte fast path parks the thread on the \e user's
+ *    atomic object using the \e shared futex operations (\c FUTEX_WAIT and
+ *    \c FUTEX_WAKE), deliberately \e not \c FUTEX_PRIVATE. \c FUTEX_PRIVATE
+ *    keys waits in the process's private per-\c mm hash table, so a different
+ *    process waking the same shared-memory address would never find the waiter
+ *    and the wake would be silently lost. A shared futex costs negligible
+ *    overhead and keeps the fast path usable if the object is in shared memory.
+ *  - The 1/2/8-byte widths (and the pthreads backend) park threads on a
+ *    per-process hash-table proxy allocated by the library, so they are
+ *    strictly intra-process regardless of the underlying primitive.
+ *  - Of the native fast paths, only Windows \c WaitOnAddress/\c WakeByAddress
+ *    is documented to wake waiters across processes; macOS \c __ulock_wait is
+ *    per-process. Cross-process wait/notify is therefore \e untested and
+ *    \e backend-dependent and must not be relied upon; use your own
+ *    process-shared primitive if you need it.
+ *
+ *  \section timeout_semantics Timeout semantics
+ *  The \c duration argument of \c atomic_wait_expected is a \e relative
+ *  remaining interval measured against a monotonic clock, or \c NULL for an
+ *  infinite wait. Backends whose kernel primitive requires an absolute
+ *  deadline (Linux \c FUTEX_WAIT, FreeBSD \c _umtx_op without
+ *  \c UMTX_ABSTIME) convert the relative interval internally, so all backends
+ *  agree on the relative contract.
+ */
+
 #ifndef WG14_ATOMIC_WAITS_ATOMIC_WAIT_H
 #define WG14_ATOMIC_WAITS_ATOMIC_WAIT_H
 
@@ -290,6 +328,13 @@ inline int atomic_native_check_helper(T const volatile *object) {
       re-compares; if still equal, parks again. Total accumulated wait is at
       least `*duration`. On return, `*expected` is updated to the most recently
       loaded value.
+      `duration` is a relative remaining interval measured against a monotonic
+      clock, or `NULL` for no timeout. Every backend implements it as a
+      relative duration: macOS and Windows consume it directly, Linux converts
+      it to an absolute CLOCK_MONOTONIC deadline for `FUTEX_WAIT`, FreeBSD
+      leaves the `UMTX_ABSTIME` flag clear (making the kernel treat it as
+      relative), and the pthreads backend converts it to an absolute
+      `pthread_cond_timedwait` deadline internally.
       \param object Pointer to a `volatile _Atomic uint_least32_t`.
       \param expected Pointer to value to compare against; updated on return.
       \param duration Maximum time to wait, or `NULL` for no timeout.
