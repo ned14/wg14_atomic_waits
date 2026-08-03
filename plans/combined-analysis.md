@@ -9,19 +9,6 @@ The single source of truth is **`docs/proposal.md`** (proposed §7.17.7.7–7.17
 These are places where the implementation does not meet what the proposal requires.
 
 
-### 1.3 (High) `memory_order` result not tied to suspension in `atomic_wait_expected`
-
-**Proposal basis:** §7.17.7.10 Returns: "If no thread suspension occurred or duration timeout
-occurs, returns zero and the memory synchronization ordering will be `failure`. Otherwise, if
-the calling thread was suspended at least once, returns a positive number and the memory
-synchronization ordering will be `success`."
-
-**Implementation:** `atomic_wait_generic` (and the shared path) sets `order = success`
-**unconditionally** after every park return, including retryable/spurious returns that lead to
-a zero (timeout / no-suspension) result. The loads that precede a zero return are therefore
-performed with `success` ordering, not `failure` as the proposal mandates. This is a direct
-deviation. Files: `atomic_wait_common.ipp.ipp:453`
-
 ### 1.4 (Medium) Store/exchange wakeups (NOTE 1) not implemented on the fallback path
 
 **Proposal basis:** §7.17.7.7 NOTE 1 and §7.17.7.10 NOTE 1: "a wakeup is possibly triggered by
@@ -29,9 +16,9 @@ either a notifying operation or by an atomic store or exchange."
 
 **Implementation:** on the hash-table fallback path the waiter parks on the *proxy* object,
 not the user's atomic. A plain `atomic_store` on the user object never signals the proxy, so a
-store alone cannot unblock a genuinely-sleeping fallback waiter; with the 1.1 fix there is no
-busy-spin poll to observe the store either. So the "wakeup triggered by a store" behaviour is
-effectively absent on this path. (Treating NOTE 1 as advisory softens this to an
+store alone cannot unblock a genuinely-sleeping fallback waiter; with 1.1/1.2 resolved there is
+no busy-spin poll left to observe the store either. So the "wakeup triggered by a store"
+behaviour is effectively absent on this path. (Treating NOTE 1 as advisory softens this to an
 under-specification — see §2.)
 
 ---
@@ -68,32 +55,17 @@ proposal leaves behaviour open; the flag here is "document for the reader", not 
 
 ---
 
-## 3. Non-proposal (internal / portability / test) notes
-
-These are implementation-quality concerns not grounded in the proposal text, kept for
-completeness:
-
-- **Header-only definitions not `static inline`.** The `atomic_wait_*_N` /
-  `atomic_notify*_N` definitions rely on the C `extern-inline` model; workable on GCC/Clang but
-  fragile in the multi-TU header-only build. The `hash_table()` weak singleton is fine. (The
-  `-DHEADER_ONLY_BUILD=ON` build currently fails under `-Werror=static-in-inline`; pre-existing
-  and unrelated to the test changes.)
-
----
-
 ## 4. Test coverage (updated after the test-suite review)
 
-Still deliberately uncovered / noted (because the library is left unchanged or the behaviour is
-only advisory):
+Still deliberately uncovered / noted (the behaviour is only advisory, or not deterministically
+triggerable by a portable unit test):
 - **Store-alone wake-up** (proposal NOTE 1 is advisory): a bare value store does **not** wake a
   fully-parked waiter on the non-Windows compute-and-wait backends, so this is not asserted as a
   standalone test.
 - **Strict notify cap > 1** is not assertable on macOS (any `max > 1` degenerates to wake-all).
-- **The exact per-outcome return ordering** (`failure` on zero / `success` on positive, §1.3) is
-  not observably distinguishable from correct caller code on real hardware; the success-side
-  ordering is exercised via the happens-before test and the §1.3 deviation remains documented.
-  Likewise, a genuinely-negative `atomic_wait_expected` return (item 4) is only produced on a
-  backend synchronization failure that a portable unit test cannot deterministically trigger.
+  Likewise, a genuinely-negative `atomic_wait_expected` return (test item 4 in
+  `atomic_wait_expected_test.c`) is only produced on a backend synchronization failure that a
+  portable unit test cannot deterministically trigger.
 
 ---
 
@@ -101,8 +73,6 @@ only advisory):
 
 | Issue | Severity | Basis / Location |
 |-------|----------|------------------|
-| `order=success` set unconditionally (failure-ordering deviation) | **High** | §7.17.7.10 Returns; `atomic_wait_common.ipp.ipp:453` |
 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |
 | CAS-success-with-no-waiters returns `1` | Low | §7.17.7.11 (under-specified) |
-| Header-only defs not `static inline` | Low | internal |
 

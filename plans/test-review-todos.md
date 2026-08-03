@@ -10,7 +10,7 @@ concurrency/correctness constraints from `AGENTS.md`.
 ## B. Open / not-fully-implemented items
 
 
-### B4. [ ] Wake-by-store (B1) and negative-return (B2) are intentionally untested — document, don't chase
+### B4. [ ] Wake-by-store and negative `atomic_wait_expected` return are intentionally untested — document, don't chase
 
 Per `combined-analysis.md` §1.4/§4, these are deliberately NOT asserted as positive
 tests, and a future reviewer should not "complete" them naively:
@@ -18,7 +18,7 @@ tests, and a future reviewer should not "complete" them naively:
 - **Store-triggered wake**: `atomic_wait` may return after a value-changing store on any
   backend (a waiter in its load/re-check/park window observes the new value, and Windows
   native wakes every parked waiter). Proposal NOTE 1 is advisory. The suite therefore makes
-  **no** negative "store does not wake" assertion (see B2); it only asserts notify-driven
+  **no** negative "store does not wake" assertion; it only asserts notify-driven
   wake counts.
 - **Negative `atomic_wait_expected` return**: only reachable on a genuine backend
   failure (wait_on_address hard error / hash-table allocation failure), not
@@ -27,4 +27,3 @@ tests, and a future reviewer should not "complete" them naively:
 
 These are fully covered by existing tests as far as is portable; leave as documented
 behaviour rather than adding a flaky/wrong assertion.
-

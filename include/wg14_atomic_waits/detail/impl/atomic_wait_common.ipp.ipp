@@ -402,7 +402,6 @@ extern "C"
     }
     WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
     &WG14_ATOMIC_WAITS_PREFIX(shared_global_hash_table);
-    WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order = failure;
     WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *item = WG14_ATOMIC_WAITS_NULLPTR;
     bool lock_is_held = false;
     for(;;)
@@ -413,9 +412,18 @@ extern "C"
         uint8_t as_bytes[8];
       } current;
       WG14_ATOMIC_WAITS_PREFIX(atomic_load_generic)(current.as_bytes, object,
-                                                    bytes, order);
+                                                    bytes, failure);
       if(memcmp(current.as_bytes, expected, bytes) != 0)
       {
+        if(ret != 0 && success > failure)
+        {
+          // The load that observes the change and completes the wait must use
+          // the success ordering (proposal §7.17.7.10 Returns), so reload the
+          // final value with it. Unnecessary when the failure ordering already
+          // provides at least as much load-ordering as the success ordering.
+          WG14_ATOMIC_WAITS_PREFIX(atomic_load_generic)(current.as_bytes,
+                                                        object, bytes, success);
+        }
         // We have successfully been woken
         memcpy(expected, current.as_bytes, bytes);
         break;
@@ -432,9 +440,14 @@ extern "C"
         }
         // Recheck our atomic now we are holding the lock
         WG14_ATOMIC_WAITS_PREFIX(atomic_load_generic)(current.as_bytes, object,
-                                                      bytes, order);
+                                                      bytes, failure);
         if(memcmp(current.as_bytes, expected, bytes) != 0)
         {
+          if(ret != 0 && success > failure)
+          {
+            WG14_ATOMIC_WAITS_PREFIX(atomic_load_generic)(
+            current.as_bytes, object, bytes, success);
+          }
           // We have successfully been woken. Probably delete my
           // entry.
           memcpy(expected, current.as_bytes, bytes);
@@ -475,7 +488,6 @@ extern "C"
         errno = -ret2;
         return -1;
       }
-      order = success;
     }
     if(item != WG14_ATOMIC_WAITS_NULLPTR)
     {
@@ -680,14 +692,26 @@ extern "C"
         end.tv_nsec -= 1000000000;
       }
     }
-    WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order = failure;
     for(;;)
     {
-      const uint_least32_t current =
-      WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, order);
+      uint_least32_t current =
+      WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, failure);
       if(current != *expected)
       {
         *expected = current;
+        if(ret != 0 && success > failure)
+        {
+          // The load that observes the change and completes the wait must use
+          // the success ordering (proposal §7.17.7.10 Returns), so reload the
+          // final value with it. Unnecessary when the failure ordering already
+          // provides at least as much load-ordering as the success ordering.
+          //
+	  // We do NOT overwrite *expected here, as the value loaded into current
+	  // may have changed since the previous atomic load and this atomic load
+	  // and then we would be returning not the value which caused the wait
+	  // to exit, which would break our API contract.
+          WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, success);
+        }
         return ret;
       }
       ret = 1;
@@ -722,7 +746,6 @@ extern "C"
         errno = -ret2;
         return -1;
       }
-      order = success;
     }
 #else
   return WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
