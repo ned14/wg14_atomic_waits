@@ -185,8 +185,11 @@ jobs:
     env:
       CC: ${{ matrix.compiler }}
       # TSan reports races but continues by default; halt on the first report
-      # so a data race fails the test (and therefore the job).
-      TSAN_OPTIONS: halt_on_error=1
+      # so a data race fails the test (and therefore the job). Keep the report
+      # on stderr so ctest --output-on-failure shows it, force symbolization of
+      # the stack traces, and grow per-thread history to the maximum so every
+      # race report includes the full stack trace of each participating thread.
+      TSAN_OPTIONS: halt_on_error=1 log_path=stderr symbolize=1 history_size=7
     steps:
     - uses: actions/checkout@v4
 
