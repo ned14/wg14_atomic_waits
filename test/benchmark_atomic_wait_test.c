@@ -3,6 +3,10 @@
 #include <time.h>
 #include <wg14_atomic_waits/atomic_wait.h>
 
+// Progress markers on stderr: ctest only echoes them on failure, so a hang is
+// localisable to the exact part of the test that blocked.
+#define SECTION(name) fprintf(stderr, "benchmark_atomic_wait_test: " name "\n")
+
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -87,8 +91,16 @@ static int producer_func(void *arg)
   while(atomic_load_explicit(&g_stop, memory_order_acquire) == 0)
   {
     // Spin until the consumer signals it is about to park.
+    const long long park_deadline = monotonic_us() + 2000000;
     while(atomic_load_explicit(&g_parked, memory_order_acquire) == 0)
     {
+      if(monotonic_us() > park_deadline)
+      {
+        fprintf(stderr,
+                "FATAL: timeout waiting for the consumer to park after 2000 "
+                "ms; aborting\n");
+        abort();
+      }
     }
     busy_wait_us(SETTLE_US);
     atomic_store_explicit(&g_notify_us, monotonic_us(), memory_order_release);
@@ -137,8 +149,16 @@ static int producer_func8(void *arg)
   }
   while(atomic_load_explicit(&g_stop, memory_order_acquire) == 0)
   {
+    const long long park_deadline = monotonic_us() + 2000000;
     while(atomic_load_explicit(&g_parked8, memory_order_acquire) == 0)
     {
+      if(monotonic_us() > park_deadline)
+      {
+        fprintf(stderr,
+                "FATAL: timeout waiting for the consumer to park after 2000 "
+                "ms; aborting\n");
+        abort();
+      }
     }
     busy_wait_us(SETTLE_US);
     atomic_store_explicit(&g_notify_us8, monotonic_us(), memory_order_release);
@@ -262,8 +282,10 @@ static void report_result(const char *name, unsigned long long rounds,
 
 int benchmark_atomic_wait_test(void)
 {
+  SECTION("4-byte native fast path");
   const unsigned long long rounds4 = run_benchmark(0);
   report_result("4-byte native", rounds4, 0);
+  SECTION("1-byte hash-table fallback path");
   const unsigned long long rounds8 = run_benchmark(1);
   report_result("1-byte hash-table", rounds8, 1);
   return 0;

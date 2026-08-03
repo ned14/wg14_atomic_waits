@@ -1,6 +1,10 @@
 #include "test_common.h"
 #include <wg14_atomic_waits/atomic_wait.h>
 
+// Progress markers on stderr: ctest only echoes them on failure, so a hang is
+// localisable to the exact part of the test that blocked.
+#define SECTION(name) fprintf(stderr, "atomic_wait_widths_test: " name "\n")
+
 // B4: exercise the non-native widths (1- and 2-byte on every POSIX backend, and
 // 8-byte on Linux) which route through the hash-table fallback, plus the native
 // fast path, without relying on any sleep-only synchronisation.
@@ -27,21 +31,7 @@
     g_woke_##SUFFIX = 0;                                                       \
     for(int i = 0; i < 2; i++)                                                 \
       CHECK(thrd_create(&thrs[i], waiter_##SUFFIX, NULL) == thrd_success);     \
-    struct timespec start;                                                     \
-    timespec_get(&start, TIME_UTC);                                            \
-    while(atomic_load_explicit(&g_park_##SUFFIX, memory_order_acquire) < 2)    \
-    {                                                                          \
-      struct timespec now;                                                     \
-      timespec_get(&now, TIME_UTC);                                            \
-      const long ms = (long) ((now.tv_sec - start.tv_sec) * 1000L +            \
-                              (now.tv_nsec - start.tv_nsec) / 1000000L);       \
-      if(ms > 2000)                                                            \
-      {                                                                        \
-        ret++;                                                                 \
-        break;                                                                 \
-      }                                                                        \
-      thrd_sleep_ms(1);                                                        \
-    }                                                                          \
+    test_wait_until("g_park_" #SUFFIX, &g_park_##SUFFIX, 2);                   \
     atomic_store_explicit(&g_val_##SUFFIX, (BASETYPE) 1,                       \
                           memory_order_seq_cst);                               \
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all)(&g_val_##SUFFIX);              \
@@ -83,21 +73,7 @@ static int isolation_test(void)
   iso_returned = 0;
   thrd_t thr;
   CHECK(thrd_create(&thr, iso_waiter, NULL) == thrd_success);
-  struct timespec start;
-  timespec_get(&start, TIME_UTC);
-  while(atomic_load_explicit(&iso_parked, memory_order_acquire) == 0)
-  {
-    struct timespec now;
-    timespec_get(&now, TIME_UTC);
-    const long ms = (long) ((now.tv_sec - start.tv_sec) * 1000L +
-                            (now.tv_nsec - start.tv_nsec) / 1000000L);
-    if(ms > 2000)
-    {
-      ret++;
-      break;
-    }
-    thrd_sleep_ms(1);
-  }
+  test_wait_until("iso_parked", &iso_parked, 1);
   // Notify object B with B's value changed; A's waiter must stay parked.
   atomic_store_explicit(&iso_b, 1, memory_order_seq_cst);
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all)(&iso_b);
@@ -138,21 +114,7 @@ static int hash_spurious_test(void)
   hs_returned = 0;
   thrd_t thr;
   CHECK(thrd_create(&thr, hs_waiter, NULL) == thrd_success);
-  struct timespec start;
-  timespec_get(&start, TIME_UTC);
-  while(atomic_load_explicit(&hs_parked, memory_order_acquire) == 0)
-  {
-    struct timespec now;
-    timespec_get(&now, TIME_UTC);
-    const long ms = (long) ((now.tv_sec - start.tv_sec) * 1000L +
-                            (now.tv_nsec - start.tv_nsec) / 1000000L);
-    if(ms > 2000)
-    {
-      ret++;
-      break;
-    }
-    thrd_sleep_ms(1);
-  }
+  test_wait_until("hs_parked", &hs_parked, 1);
   // Dummy notify while parked with the value unchanged: must re-park, not
   // return.
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&hs_val);
@@ -170,10 +132,15 @@ static int hash_spurious_test(void)
 int atomic_wait_widths_test_main(void)
 {
   int ret = 0;
+  SECTION("round-trip 1-byte (hash-table fallback)");
   ret += roundtrip_w1();
+  SECTION("round-trip 2-byte (hash-table fallback)");
   ret += roundtrip_w2();
+  SECTION("round-trip 8-byte (native or hash-table fallback)");
   ret += roundtrip_w8();
+  SECTION("object isolation: wait on A is not woken by notify on B");
   ret += isolation_test();
+  SECTION("spurious wake in hash-table path (explicit)");
   ret += hash_spurious_test();
   return ret;
 }

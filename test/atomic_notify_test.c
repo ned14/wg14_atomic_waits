@@ -1,6 +1,10 @@
 #include "test_common.h"
 #include <wg14_atomic_waits/atomic_wait.h>
 
+// Progress markers on stderr: ctest only echoes them on failure, so a hang is
+// localisable to the exact part of the test that blocked.
+#define SECTION(name) fprintf(stderr, "atomic_notify_test: " name "\n")
+
 #define NUM_THREADS 4
 
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t g_value8 = 0;
@@ -17,34 +21,13 @@ static int waiter_func(void *arg)
   return 0;
 }
 
-// Bounded spin on a handshake counter (AGENTS.md rule 5: sleeps only inside the
-// proper spin synchronisation).
-static int
-wait_counter(const WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *counter,
-             int goal)
-{
-  struct timespec start;
-  timespec_get(&start, TIME_UTC);
-  while(atomic_load_explicit(counter, memory_order_acquire) < goal)
-  {
-    struct timespec now;
-    timespec_get(&now, TIME_UTC);
-    const long ms = (long) ((now.tv_sec - start.tv_sec) * 1000L +
-                            (now.tv_nsec - start.tv_nsec) / 1000000L);
-    if(ms > 2000)
-    {
-      return 0;
-    }
-    thrd_sleep_ms(1);
-  }
-  return 1;
-}
-
 int atomic_notify_test(void)
 {
   int ret = 0;
   thrd_t waiters[NUM_THREADS];
 
+  // Park all waiters, then wake at least one with atomic_notify_one.
+  SECTION("wake one waiter via atomic_notify_one");
   g_value8 = 0;
   g_pcount = 0;
   g_woke = 0;
@@ -52,7 +35,7 @@ int atomic_notify_test(void)
   {
     CHECK(thrd_create(&waiters[i], waiter_func, NULL) == thrd_success);
   }
-  CHECK(wait_counter(&g_pcount, NUM_THREADS));
+  test_wait_until("g_pcount", &g_pcount, NUM_THREADS);
 
   // Change the value so that waiters woken by a notify actually return from
   // atomic_wait (otherwise a woken waiter re-parks with the value still equal).
@@ -69,11 +52,12 @@ int atomic_notify_test(void)
   // cannot assert "exactly one": the store above may already have released a
   // not-yet-parked waiter, and spurious wakes are permitted.)
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&g_value8);
-  CHECK(wait_counter(&g_woke, 1));
+  test_wait_until("g_woke", &g_woke, 1);
 
   // atomic_notify_all must wake every remaining parked waiter.
+  SECTION("atomic_notify_all wakes every remaining waiter");
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all)(&g_value8);
-  CHECK(wait_counter(&g_woke, NUM_THREADS));
+  test_wait_until("g_woke", &g_woke, NUM_THREADS);
   CHECK(atomic_load_explicit(&g_woke, memory_order_acquire) == NUM_THREADS);
 
   for(int i = 0; i < NUM_THREADS; i++)
@@ -84,6 +68,7 @@ int atomic_notify_test(void)
   }
 
   // atomic_wait_expected CAS failure
+  SECTION("atomic_notify CAS failure");
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t value2 = 42;
   uint_least32_t expected2 = 99;
   uint_least32_t desired2 = 99;

@@ -2,6 +2,10 @@
 #include <time.h>
 #include <wg14_atomic_waits/atomic_wait.h>
 
+// Progress markers on stderr: ctest only echoes them on failure, so a hang is
+// localisable to the exact part of the test that blocked.
+#define SECTION(name) fprintf(stderr, "atomic_wait_race_test: " name "\n")
+
 #if defined(__APPLE__)
 #include <mach/mach.h>
 #endif
@@ -61,25 +65,6 @@ static int waiter_func(void *arg)
   return (int) atomic_load_explicit(&g_value, memory_order_acquire);
 }
 
-static int wait_until_parked(void)
-{
-  struct timespec start;
-  timespec_get(&start, TIME_UTC);
-  while(atomic_load_explicit(&g_parked, memory_order_acquire) == 0)
-  {
-    struct timespec now;
-    timespec_get(&now, TIME_UTC);
-    const long ms = (long) ((now.tv_sec - start.tv_sec) * 1000L +
-                            (now.tv_nsec - start.tv_nsec) / 1000000L);
-    if(ms > 2000)
-    {
-      return 0;
-    }
-    thrd_sleep_ms(1);
-  }
-  return 1;
-}
-
 int atomic_wait_race_test_main(void)
 {
   int ret = 0;
@@ -88,17 +73,19 @@ int atomic_wait_race_test_main(void)
   g_cpu_burned = -1.0;
   thrd_t thr;
   CHECK(thrd_create(&thr, waiter_func, NULL) == thrd_success);
-  CHECK(wait_until_parked());
+  test_wait_until("g_parked", &g_parked, 1);
   g_parked = 0;
 
   // Spurious notify with the value unchanged: the waiter must re-park (and, per
   // the proposal, actually suspend again).
+  SECTION("spurious notify while parked must re-park and suspend");
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&g_value);
 
   // Give the (re-parked) waiter a real-time window. If it busy-spins instead of
   // suspending it burns ~100% CPU here; if it properly suspends it burns ~none.
   thrd_sleep_ms(300);
 
+  SECTION("value change + notify releases the waiter");
   atomic_store_explicit(&g_value, 1, memory_order_seq_cst);
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all)(&g_value);
   int wr;

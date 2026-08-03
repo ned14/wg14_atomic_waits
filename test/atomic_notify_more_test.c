@@ -2,27 +2,12 @@
 #include <time.h>
 #include <wg14_atomic_waits/atomic_wait.h>
 
+// Progress markers on stderr: ctest only echoes them on failure, so a hang is
+// localisable to the exact part of the test that blocked.
+#define SECTION(name) fprintf(stderr, "atomic_notify_more_test: " name "\n")
+
 #define CAP_WAITERS 6
 #define NOTIFIERS 4
-
-static void mwait_flag(const WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *flag,
-                       int goal)
-{
-  struct timespec start;
-  timespec_get(&start, TIME_UTC);
-  while(atomic_load_explicit(flag, memory_order_acquire) < goal)
-  {
-    struct timespec now;
-    timespec_get(&now, TIME_UTC);
-    const long ms = (long) ((now.tv_sec - start.tv_sec) * 1000L +
-                            (now.tv_nsec - start.tv_nsec) / 1000000L);
-    if(ms > 2000)
-    {
-      return;
-    }
-    thrd_sleep_ms(1);
-  }
-}
 
 // --- atomic_notify success path & max_threads_to_wake == 0 ---
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_native_wait_notify_t ns_val =
@@ -60,8 +45,7 @@ static int notify_success_test(void)
   ns_returned = 0;
   thrd_t thr;
   CHECK(thrd_create(&thr, ns_waiter, NULL) == thrd_success);
-  mwait_flag(&ns_parked, 1);
-  CHECK(ns_parked == 1);
+  test_wait_until("ns_parked", &ns_parked, 1);
   WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) e1 = 0;
   nr = atomic_notify(&ns_val, &e1, desired, 1, memory_order_seq_cst,
                      memory_order_seq_cst);
@@ -109,7 +93,7 @@ static int cap_test(void)
   {
     CHECK(thrd_create(&thrs[i], cap_waiter, NULL) == thrd_success);
   }
-  mwait_flag(&cap_parked, CAP_WAITERS);
+  test_wait_until("cap_parked", &cap_parked, CAP_WAITERS);
 
   WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) expected = 0;
   const WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) desired = 1;
@@ -176,7 +160,7 @@ static int concurrent_notify_test(void)
   {
     CHECK(thrd_create(&waiters[i], conc_waiter, NULL) == thrd_success);
   }
-  mwait_flag(&conc_parked, CAP_WAITERS);
+  test_wait_until("conc_parked", &conc_parked, CAP_WAITERS);
   for(int i = 0; i < NOTIFIERS; i++)
   {
     CHECK(thrd_create(&notifiers[i], conc_notifier, NULL) == thrd_success);
@@ -200,8 +184,11 @@ static int concurrent_notify_test(void)
 int atomic_notify_more_test_main(void)
 {
   int ret = 0;
+  SECTION("notify success path and max_threads_to_wake == 0");
   ret += notify_success_test();
+  SECTION("wake cap: never more than max_threads_to_wake");
   ret += cap_test();
+  SECTION("concurrent notifies from multiple threads");
   ret += concurrent_notify_test();
   return ret;
 }

@@ -114,6 +114,9 @@ if(PROJECT_IS_TOP_LEVEL AND (NOT DEFINED BUILD_TESTING OR BUILD_TESTING))
   function(add_code_test target)
     add_code_example(${target} ${ARGN})
     add_test(NAME ${target} COMMAND $<TARGET_FILE:${target}>)
+    # Fail fast if a test hangs: a stuck wait/notify would otherwise burn the
+    # CI-wide ctest --timeout (300s) before being reported as a timeout.
+    set_tests_properties(${target} PROPERTIES TIMEOUT 60)
   endfunction()
 
   add_subdirectory("test")

@@ -1,6 +1,10 @@
 #include "test_common.h"
 #include <wg14_atomic_waits/atomic_wait.h>
 
+// Progress markers on stderr: ctest only echoes them on failure, so a hang is
+// localisable to the exact part of the test that blocked.
+#define SECTION(name) fprintf(stderr, "atomic_wait_more_test: " name "\n")
+
 // --- Immediate return when *object != expected (no suspension) ---
 static int immediate_return_test(void)
 {
@@ -31,24 +35,6 @@ static int spur_waiter(void *arg)
   return 0;
 }
 
-static void wait_flag(const WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *flag)
-{
-  struct timespec start;
-  timespec_get(&start, TIME_UTC);
-  while(atomic_load_explicit(flag, memory_order_acquire) == 0)
-  {
-    struct timespec now;
-    timespec_get(&now, TIME_UTC);
-    const long ms = (long) ((now.tv_sec - start.tv_sec) * 1000L +
-                            (now.tv_nsec - start.tv_nsec) / 1000000L);
-    if(ms > 2000)
-    {
-      return;
-    }
-    thrd_sleep_ms(1);
-  }
-}
-
 // A notify that lands while the waiter is parked, but with the value unchanged,
 // must wake it, make it re-compare, re-park, and only return once the value
 // really differs.
@@ -61,8 +47,7 @@ static int spurious_wake_test(void)
   spur_observed = 0;
   thrd_t thr;
   CHECK(thrd_create(&thr, spur_waiter, NULL) == thrd_success);
-  wait_flag(&spur_parked);
-  CHECK(spur_parked == 1);
+  test_wait_until("spur_parked", &spur_parked, 1);
 
   // Spurious notify: value still equals expected (0), so the waiter must
   // re-park.
@@ -92,8 +77,7 @@ static int notify_before_park_test(void)
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&spur_val);
   thrd_t thr;
   CHECK(thrd_create(&thr, spur_waiter, NULL) == thrd_success);
-  wait_flag(&spur_parked);
-  CHECK(spur_parked == 1);
+  test_wait_until("spur_parked", &spur_parked, 1);
   thrd_sleep_ms(30);
   CHECK(atomic_load_explicit(&spur_returned, memory_order_acquire) == 0);
   atomic_store_explicit(&spur_val, 2, memory_order_seq_cst);
@@ -138,8 +122,7 @@ static int lost_wake_stress_test(void)
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&lw_val);
     thrd_t thr;
     CHECK(thrd_create(&thr, lw_waiter, NULL) == thrd_success);
-    wait_flag(&lw_parked);
-    CHECK(lw_parked == 1);
+    test_wait_until("lw_parked", &lw_parked, 1);
     atomic_store_explicit(&lw_val, 1, memory_order_seq_cst);
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all)(&lw_val);
     int wr;
@@ -185,8 +168,7 @@ static int lost_wake_stress_native_test(void)
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&lw4_val);
     thrd_t thr;
     CHECK(thrd_create(&thr, lw4_waiter, NULL) == thrd_success);
-    wait_flag(&lw4_parked);
-    CHECK(lw4_parked == 1);
+    test_wait_until("lw4_parked", &lw4_parked, 1);
     atomic_store_explicit(&lw4_val, 1, memory_order_seq_cst);
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all)(&lw4_val);
     int wr;
@@ -199,10 +181,15 @@ static int lost_wake_stress_native_test(void)
 int atomic_wait_more_test_main(void)
 {
   int ret = 0;
+  SECTION("immediate return when *object != expected");
   ret += immediate_return_test();
+  SECTION("spurious wake while parked re-parks");
   ret += spurious_wake_test();
+  SECTION("notify before park must not cause premature return");
   ret += notify_before_park_test();
+  SECTION("lost-wake robustness, hash-table fallback path");
   ret += lost_wake_stress_test();
+  SECTION("lost-wake robustness, native 4-byte path");
   ret += lost_wake_stress_native_test();
   return ret;
 }
