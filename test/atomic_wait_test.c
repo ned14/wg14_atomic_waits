@@ -1,21 +1,37 @@
 #include "test_common.h"
 #include <wg14_atomic_waits/atomic_wait.h>
-#include <string.h>
+
+static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int g_parked = 0;
 
 static int waiter_func(void *arg)
 {
-  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *value = (WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *)arg;
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *value =
+  (WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *) arg;
   int expected = 0;
+  atomic_store_explicit(&g_parked, 1, memory_order_release);
   WG14_ATOMIC_WAITS_PREFIX(atomic_wait)(value, expected);
-  return *value;
+  return atomic_load_explicit(value, memory_order_acquire);
 }
 
 static int waiter_explicit_func(void *arg)
 {
-  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *value = (WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *)arg;
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *value =
+  (WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int *) arg;
   int expected = 0;
-  WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit)(value, expected, memory_order_seq_cst);
-  return *value;
+  atomic_store_explicit(&g_parked, 1, memory_order_release);
+  WG14_ATOMIC_WAITS_PREFIX(atomic_wait_explicit)(value, expected,
+                                                 memory_order_acquire);
+  return atomic_load_explicit(value, memory_order_acquire);
+}
+
+static void wait_until_parked(void)
+{
+  // Proper synchronisation: spin (with a permitted sleep inside the spin) on a
+  // handshake flag set by the waiter immediately before it calls atomic_wait.
+  while(atomic_load_explicit(&g_parked, memory_order_acquire) == 0)
+  {
+    thrd_sleep_ms(1);
+  }
 }
 
 int atomic_wait_test(void)
@@ -23,10 +39,11 @@ int atomic_wait_test(void)
   int ret = 0;
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int value = 0;
 
+  // -- Waiter observes a store + notify without any sleep-based synchronisation
+  g_parked = 0;
   thrd_t thr;
   CHECK(thrd_create(&thr, waiter_func, &value) == thrd_success);
-
-  thrd_sleep_ms(50);
+  wait_until_parked();
   atomic_store_explicit(&value, 1, memory_order_seq_cst);
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
 
@@ -34,14 +51,12 @@ int atomic_wait_test(void)
   CHECK(thrd_join(thr, &result) == thrd_success);
   CHECK(result == 1);
 
-  thrd_sleep_ms(50);
+  // -- Same, via atomic_wait_explicit with a non-seq_cst order
+  g_parked = 0;
   atomic_store_explicit(&value, 0, memory_order_seq_cst);
-  WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
-
   thrd_t thr2;
   CHECK(thrd_create(&thr2, waiter_explicit_func, &value) == thrd_success);
-
-  thrd_sleep_ms(50);
+  wait_until_parked();
   atomic_store_explicit(&value, 42, memory_order_seq_cst);
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
 

@@ -82,7 +82,14 @@ limitations under the License.
 
 #ifndef WG14_ATOMIC_WAITS_EXTERN
 #if WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY
-#define WG14_ATOMIC_WAITS_EXTERN WG14_ATOMIC_WAITS_INLINE
+// In header-only mode the public API is defined per translation unit with
+// internal linkage. It must be `static inline`: an external-linkage inline
+// function may not call the internal `static` helpers (e.g.
+// atomic_wait_generic) used by the shared implementation
+// (`-Wstatic-in-inline`), and per-TU `static` definitions avoid
+// duplicate-symbol errors when the same header is included from more than one
+// translation unit.
+#define WG14_ATOMIC_WAITS_EXTERN static WG14_ATOMIC_WAITS_INLINE
 #else
 #define WG14_ATOMIC_WAITS_EXTERN WG14_ATOMIC_WAITS_EXTERN_IMPL
 #endif

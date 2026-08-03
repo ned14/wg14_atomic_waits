@@ -15,6 +15,9 @@
    limitations under the License.
 */
 
+#ifndef WG14_ATOMIC_WAITS_LINUX_IMPL_GUARD
+#define WG14_ATOMIC_WAITS_LINUX_IMPL_GUARD
+
 #if !defined(__linux__)
 #error "atomic_wait_linux.c.ipp must only be included on Linux"
 #endif
@@ -78,3 +81,9 @@ extern "C"
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_64 0
 
 #include "atomic_wait_common.ipp.ipp"
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* WG14_ATOMIC_WAITS_LINUX_IMPL_GUARD */

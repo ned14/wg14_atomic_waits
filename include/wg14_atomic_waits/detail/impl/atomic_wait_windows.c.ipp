@@ -15,6 +15,9 @@
    limitations under the License.
 */
 
+#ifndef WG14_ATOMIC_WAITS_WINDOWS_IMPL_GUARD
+#define WG14_ATOMIC_WAITS_WINDOWS_IMPL_GUARD
+
 #if !defined(_WIN32) && !defined(_WIN64)
 #error "atomic_wait_windows.c.ipp must only be included on Windows"
 #endif
@@ -246,3 +249,9 @@ extern "C"
 #endif
 
 #include "atomic_wait_common.ipp.ipp"
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* WG14_ATOMIC_WAITS_WINDOWS_IMPL_GUARD */

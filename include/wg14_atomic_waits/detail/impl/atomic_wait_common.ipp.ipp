@@ -34,8 +34,8 @@ limitations under the License.
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_INIT(x)                   \
   (                                                                            \
-  atomic_store_explicit(&(x)->atomic, 0,                                       \
-                        WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release), \
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_store_explicit(                       \
+  &(x)->atomic, 0, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release),      \
   0)
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_DESTROY(x) (0)
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(x, timeout)          \
@@ -43,8 +43,8 @@ limitations under the License.
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAKE(x,                   \
                                                           max_threads_to_wake) \
   (                                                                            \
-  atomic_store_explicit(&(x)->atomic, 1,                                       \
-                        WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release), \
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_store_explicit(                       \
+  &(x)->atomic, 1, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release),      \
   WG14_ATOMIC_WAITS_PREFIX(wake_by_address32)(&(x)->atomic,                    \
                                               (max_threads_to_wake)))
 #endif
@@ -84,6 +84,13 @@ extern "C"
   WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *
   WG14_ATOMIC_WAITS_PREFIX(hash_table)(void);
 
+  // In header-only mode the header is included from more than one translation
+  // unit, so every TU would otherwise emit its own strong definition and the
+  // linker would reject them as a duplicate symbol. Mark the singleton weak
+  // (GCC/Clang) / selectany (MSVC) so the multiple identical definitions are
+  // coalesced into one, keeping a single process-wide proxy table shared across
+  // TUs (a wait in one TU must find a notify's proxy in another).
+  WG14_ATOMIC_WAITS_IGNORE_MULTIPLE_DEFINITIONS
   WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *
   WG14_ATOMIC_WAITS_PREFIX(hash_table)(void)
   {
@@ -96,7 +103,7 @@ extern "C"
   {
     for(;;)
     {
-      if(atomic_flag_test_and_set_explicit(
+      if(WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_flag_test_and_set_explicit(
          &table->lock, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_acquire) ==
          false)
       {
@@ -108,7 +115,7 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE void
   WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(hash_table_t *table)
   {
-    atomic_flag_clear_explicit(
+    WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_flag_clear_explicit(
     &table->lock, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release);
   }
 
@@ -297,29 +304,33 @@ extern "C"
     {
     case 1:
     {
-      const uint8_t v =
-      atomic_load_explicit((const atomic_uint_least8_t *) object, order);
+      const uint8_t v = WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(
+      (const WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *) object,
+      order);
       memcpy(dest, &v, bytes);
       break;
     }
     case 2:
     {
-      const uint16_t v =
-      atomic_load_explicit((const atomic_uint_least16_t *) object, order);
+      const uint16_t v = WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(
+      (const WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *) object,
+      order);
       memcpy(dest, &v, bytes);
       break;
     }
     case 4:
     {
-      const uint32_t v =
-      atomic_load_explicit((const atomic_uint_least32_t *) object, order);
+      const uint32_t v = WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(
+      (const WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *) object,
+      order);
       memcpy(dest, &v, bytes);
       break;
     }
     case 8:
     {
-      const uint64_t v =
-      atomic_load_explicit((const atomic_uint_least64_t *) object, order);
+      const uint64_t v = WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(
+      (const WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *) object,
+      order);
       memcpy(dest, &v, bytes);
       break;
     }
@@ -495,10 +506,11 @@ extern "C"
 
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_1)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object,
-  uint_least8_t expected, memory_order order)
+  uint_least8_t expected, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order)
   {
 #if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_8
-    while(atomic_load_explicit(object, order) == expected)
+    while(WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, order) ==
+          expected)
     {
       (void) WG14_ATOMIC_WAITS_PREFIX(
       wait_on_address8(object, expected, WG14_ATOMIC_WAITS_NULLPTR));
@@ -510,10 +522,11 @@ extern "C"
   }
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_2)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object,
-  uint_least16_t expected, memory_order order)
+  uint_least16_t expected, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order)
   {
 #if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_16
-    while(atomic_load_explicit(object, order) == expected)
+    while(WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, order) ==
+          expected)
     {
       (void) WG14_ATOMIC_WAITS_PREFIX(
       wait_on_address16(object, expected, WG14_ATOMIC_WAITS_NULLPTR));
@@ -525,10 +538,11 @@ extern "C"
   }
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
-  uint_least32_t expected, memory_order order)
+  uint_least32_t expected, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order)
   {
 #if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32
-    while(atomic_load_explicit(object, order) == expected)
+    while(WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, order) ==
+          expected)
     {
       (void) WG14_ATOMIC_WAITS_PREFIX(
       wait_on_address32(object, expected, WG14_ATOMIC_WAITS_NULLPTR));
@@ -540,10 +554,11 @@ extern "C"
   }
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_8)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
-  uint_least64_t expected, memory_order order)
+  uint_least64_t expected, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order)
   {
 #if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_64
-    while(atomic_load_explicit(object, order) == expected)
+    while(WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, order) ==
+          expected)
     {
       (void) WG14_ATOMIC_WAITS_PREFIX(
       wait_on_address64(object, expected, WG14_ATOMIC_WAITS_NULLPTR));
@@ -630,9 +645,11 @@ extern "C"
 
   int WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected_32)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t
-  *restrict object,
-  uint_least32_t *restrict expected, const struct timespec *restrict duration,
-  memory_order success, memory_order failure)
+  *__restrict object,
+  uint_least32_t *__restrict expected,
+  const struct timespec *__restrict duration,
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order success,
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order failure)
   {
 #if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32
     int ret = 0;
@@ -652,7 +669,8 @@ extern "C"
     WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order = failure;
     for(;;)
     {
-      const uint_least32_t current = atomic_load_explicit(object, order);
+      const uint_least32_t current =
+      WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, order);
       if(current != *expected)
       {
         *expected = current;
@@ -700,16 +718,18 @@ extern "C"
 
   int WG14_ATOMIC_WAITS_PREFIX(atomic_notify_32)(
   volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t
-  *restrict object,
-  uint_least32_t *restrict expected, uint_least32_t desired,
-  unsigned max_threads_to_wake, memory_order success, memory_order failure)
+  *__restrict object,
+  uint_least32_t *__restrict expected, uint_least32_t desired,
+  unsigned max_threads_to_wake,
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order success,
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order failure)
   {
     if(max_threads_to_wake == 0)
     {
       return 0;
     }
-    if(!atomic_compare_exchange_strong_explicit(object, expected, desired,
-                                                success, failure))
+    if(!WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_compare_exchange_strong_explicit(
+       object, expected, desired, success, failure))
     {
       return 0;
     }

@@ -1,6 +1,6 @@
 // Third TU for header-only ODR test (OS-specific backend dispatch)
-#include <wg14_atomic_waits/atomic_wait.h>
 #include <atomic>
+#include <wg14_atomic_waits/atomic_wait.h>
 
 void wait_all_fn(std::atomic<int> *x)
 {

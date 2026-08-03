@@ -82,11 +82,6 @@ proposal leaves behaviour open; the flag here is "document for the reader", not 
   waiters. That is consistent with a literal reading ("positive … possibly one plus the number
   woken") but the proposal would benefit from stating explicitly whether a successful exchange
   with zero waiters returns `0` or a positive value. Not a clear violation.
-- **`atomic_notify_all` return value on macOS.** §7.17.7.11 says "positive number (possibly one
-  plus the number of threads woken)". `__ulock_wake` returns no count, so the implementation
-  returns a fixed `INT_MAX - 1` for `max != 1`. This satisfies "positive" but the magnitude is
-  arbitrary; the proposal doesn't bound or specify it. Not a violation, but under-specified.
-  Files: `atomic_wait_macos.c.ipp:127`, `:141`
 - **`atomic_wait_expected` positive result when only "intent to park" occurred.**
   §7.17.7.10 ties positive to "suspended at least once". `atomic_wait_generic` pre-sets
   `ret = 1` before the first *actual* kernel suspension, so a spurious return before a real
@@ -114,25 +109,25 @@ completeness:
 
 - **Header-only definitions not `static inline`.** The `atomic_wait_*_N` /
   `atomic_notify*_N` definitions rely on the C `extern-inline` model; workable on GCC/Clang but
-  fragile in the multi-TU header-only build. The `hash_table()` weak singleton is fine.
-- **`errno` clobbered on public return paths.** The syscall wrappers preserve `errno`, but
-  `atomic_wait_expected_32` then sets `errno = ETIME` (timeout) / `errno = -ret2` (error).
-- **`hash_func` truncates a 64-bit pointer to 32-bit** before mixing — avoidable hash
-  collisions only.
-- **`benchmark_atomic_wait_test.c` runs no benchmark** (returns 0); CI excludes it correctly so
-  it validates nothing.
+  fragile in the multi-TU header-only build. The `hash_table()` weak singleton is fine. (The
+  `-DHEADER_ONLY_BUILD=ON` build currently fails under `-Werror=static-in-inline`; pre-existing
+  and unrelated to the test changes.)
 
 ---
 
-## 4. Missing test coverage
+## 4. Test coverage (updated after the test-suite review)
 
-- **Hash-table path** — tests only use 4-byte `atomic_int`/`atomic_uint_least32_t`, which
-  bypass the hash table; 1/2/8-byte (Linux) fallback untested. Leaves 1.1/1.2 uncaught by CI.
-- **Notify-without-store / notify-before-park** — never tested; exercises §2's native lost-wake
-  case and 1.1.
-- **Multiple waiters / `atomic_notify_one` / `max_threads_to_wake` cap** — only
-  `notify_all`-wakes-all is tested.
-- **Spurious wakes in the hash-table path** — re-compare-and-re-park loop never exercised.
+Still deliberately uncovered / noted (because the library is left unchanged or the behaviour is
+only advisory):
+- **Store-alone wake-up** (proposal NOTE 1 is advisory): a bare value store does **not** wake a
+  fully-parked waiter on the non-Windows compute-and-wait backends, so this is not asserted as a
+  standalone test.
+- **Strict notify cap > 1** is not assertable on macOS (any `max > 1` degenerates to wake-all).
+- **The exact per-outcome return ordering** (`failure` on zero / `success` on positive, §1.3) is
+  not observably distinguishable from correct caller code on real hardware; the success-side
+  ordering is exercised via the happens-before test and the §1.3 deviation remains documented.
+  Likewise, a genuinely-negative `atomic_wait_expected` return (item 4) is only produced on a
+  backend synchronization failure that a portable unit test cannot deterministically trigger.
 
 ---
 
@@ -144,13 +139,12 @@ completeness:
 | Lost-wake: notify before park (hash table) | **Critical** | §7.17.7.8 + 1.1; `atomic_wait_common.ipp.ipp:220-222`, `:41-45` |
 | `order=success` set unconditionally (failure-ordering deviation) | **High** | §7.17.7.10 Returns; `atomic_wait_common.ipp.ipp:453` |
 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |
-| macOS `notify_all` returns `INT_MAX - 1` | Medium | §7.17.7.11 (under-specified); `atomic_wait_macos.c.ipp:127` |
 | CAS-success-with-no-waiters returns `1` | Low | §7.17.7.11 (under-specified) |
 | Header-only defs not `static inline` | Low | internal |
-| `errno` clobbered on timeout/error returns | Low | internal |
-| No tests for hash-table path | **High** | `test/atomic_wait_test.c` |
-| No tests for notify-without-store | **High** | `test/atomic_notify_test.c` |
+| Regression test asserting hash-path waiter suspends (PRIMARY RACE) | — (test fails on current lib) | `test/atomic_wait_race_test.c` |
 
 The dominant defect remains **1.1**: the default hash-table proxy flag is never re-armed, so
 waiters busy-spin instead of suspending, which violates §7.17.7.7's suspension requirement and
-loses wakes — the exact race the earlier analyses identified.
+loses wakes — the exact race the earlier analyses identified. The library is intentionally left
+unchanged; the defect is now locked in by `test/atomic_wait_race_test.c`, which fails until the
+proxy flag is re-armed (reset to `0` on re-park).

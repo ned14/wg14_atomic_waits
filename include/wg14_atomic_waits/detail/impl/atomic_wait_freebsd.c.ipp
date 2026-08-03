@@ -15,6 +15,9 @@
    limitations under the License.
 */
 
+#ifndef WG14_ATOMIC_WAITS_FREEBSD_IMPL_GUARD
+#define WG14_ATOMIC_WAITS_FREEBSD_IMPL_GUARD
+
 #if !defined(__FreeBSD__) && !defined(__FreeBSD_kernel__)
 #error "atomic_wait_freebsd.c.ipp must only be included on FreeBSD"
 #endif
@@ -137,3 +140,9 @@ extern "C"
   }
 
 #include "atomic_wait_common.ipp.ipp"
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* WG14_ATOMIC_WAITS_FREEBSD_IMPL_GUARD */

@@ -15,6 +15,9 @@
    limitations under the License.
 */
 
+#ifndef WG14_ATOMIC_WAITS_PTHREADS_IMPL_GUARD
+#define WG14_ATOMIC_WAITS_PTHREADS_IMPL_GUARD
+
 #ifndef __linux__
 #ifndef __FreeBSD__
 #ifndef __APPLE__
@@ -263,3 +266,9 @@ extern "C"
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_64 0
 
 #include "atomic_wait_common.ipp.ipp"
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* WG14_ATOMIC_WAITS_PTHREADS_IMPL_GUARD */

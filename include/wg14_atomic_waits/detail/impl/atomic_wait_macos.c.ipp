@@ -17,6 +17,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#ifndef WG14_ATOMIC_WAITS_MACOS_IMPL_GUARD
+#define WG14_ATOMIC_WAITS_MACOS_IMPL_GUARD
+
 #if !defined(__APPLE__)
 #error "atomic_wait_macos.c.ipp must only be included on macOS/iOS"
 #endif
@@ -142,3 +145,9 @@ extern "C"
   }
 
 #include "atomic_wait_common.ipp.ipp"
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* WG14_ATOMIC_WAITS_MACOS_IMPL_GUARD */
