@@ -47,11 +47,18 @@ extern "C"
   {
     int save_errno = errno;
     // The shared implementation passes a relative remaining duration (NULL for
-    // an infinite wait), but FUTEX_WAIT only accepts an absolute
+    // an infinite wait), but the futex wait operations only accept an absolute
     // CLOCK_MONOTONIC deadline. Convert the relative duration to an absolute
     // one here, otherwise a small relative value would be interpreted as a
     // deadline in the distant past and the wait would return immediately
     // (busy-spinning until expiry).
+    //
+    // Use FUTEX_WAIT_BITSET rather than plain FUTEX_WAIT: some virtualised
+    // kernels (e.g. Ubuntu 24.04/26.04 guests) fail to arm the wake timer for
+    // plain FUTEX_WAIT timeouts, silently leaving the waiter asleep past its
+    // deadline, whereas the BITSET variant (which glibc itself uses for
+    // pthread_cond_timedwait) arms the hrtimer correctly. With
+    // FUTEX_BITSET_MATCH_ANY it is semantically identical to FUTEX_WAIT.
     int ret;
     if(duration != WG14_ATOMIC_WAITS_NULLPTR)
     {
@@ -65,13 +72,15 @@ extern "C"
         abstime.tv_sec++;
         abstime.tv_nsec -= 1000000000L;
       }
-      ret = (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT,
-                          (int) expected, &abstime, NULL, 0);
+      ret =
+      (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT_BITSET,
+                    (int) expected, &abstime, NULL, FUTEX_BITSET_MATCH_ANY);
     }
     else
     {
-      ret = (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT,
-                          (int) expected, NULL, NULL, 0);
+      ret =
+      (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT_BITSET,
+                    (int) expected, NULL, NULL, FUTEX_BITSET_MATCH_ANY);
     }
     if(ret == 0)
     {

@@ -141,7 +141,7 @@ Semantics notes:
 - `duration` is a relative remaining interval measured against a monotonic
   clock, or `NULL` for no timeout. macOS, Windows and pthreads consume it
   directly; Linux converts it to an absolute CLOCK_MONOTONIC deadline for
-  `FUTEX_WAIT`; FreeBSD leaves the `UMTX_ABSTIME` flag clear so the kernel
+  `FUTEX_WAIT_BITSET`; FreeBSD leaves the `UMTX_ABSTIME` flag clear so the kernel
   treats it as relative.
 - `atomic_notify_all` always wakes every parked waiter: Windows uses
   `WakeByAddressAll`, macOS uses the wake-all flag, Linux and FreeBSD clamp the

@@ -31,8 +31,8 @@ limitations under the License.
  *  guaranteed to synchronise across processes sharing memory
  *  (e.g. \c mmap(MAP_SHARED)):
  *  - On Linux the native 4-byte fast path parks the thread on the \e user's
- *    atomic object using the \e shared futex operations (\c FUTEX_WAIT and
- *    \c FUTEX_WAKE), deliberately \e not \c FUTEX_PRIVATE. \c FUTEX_PRIVATE
+ *    atomic object using the \e shared futex operations (\c FUTEX_WAIT_BITSET
+ *    and \c FUTEX_WAKE), deliberately \e not \c FUTEX_PRIVATE. \c FUTEX_PRIVATE
  *    keys waits in the process's private per-\c mm hash table, so a different
  *    process waking the same shared-memory address would never find the waiter
  *    and the wake would be silently lost. A shared futex costs negligible
@@ -50,7 +50,7 @@ limitations under the License.
  *  The \c duration argument of \c atomic_wait_expected is a \e relative
  *  remaining interval measured against a monotonic clock, or \c NULL for an
  *  infinite wait. Backends whose kernel primitive requires an absolute
- *  deadline (Linux \c FUTEX_WAIT, FreeBSD \c _umtx_op without
+ *  deadline (Linux \c FUTEX_WAIT_BITSET, FreeBSD \c _umtx_op without
  *  \c UMTX_ABSTIME) convert the relative interval internally, so all backends
  *  agree on the relative contract.
  */
@@ -331,7 +331,7 @@ inline int atomic_native_check_helper(T const volatile *object) {
       `duration` is a relative remaining interval measured against a monotonic
       clock, or `NULL` for no timeout. Every backend implements it as a
       relative duration: macOS and Windows consume it directly, Linux converts
-      it to an absolute CLOCK_MONOTONIC deadline for `FUTEX_WAIT`, FreeBSD
+      it to an absolute CLOCK_MONOTONIC deadline for `FUTEX_WAIT_BITSET`, FreeBSD
       leaves the `UMTX_ABSTIME` flag clear (making the kernel treat it as
       relative), and the pthreads backend converts it to an absolute
       `pthread_cond_timedwait` deadline internally.
