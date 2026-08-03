@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['notify_20extension_20to_20standard_20c_0',['Reference implementation for proposed WG14 atomic wait/notify extension to standard C',['../index.html',1,'']]]
+  ['header_20only_0',['Header-only',['../index.html#autotoc_md3',1,'']]]
 ];

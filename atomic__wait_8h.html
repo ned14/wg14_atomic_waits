@@ -118,6 +118,9 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('atomic__wait_8
   <div class="headertitle"><div class="title">atomic_wait.h File Reference</div></div>
 </div><!--header-->
 <div class="contents">
+
+<p>Proposed WG14 atomic wait/notify support (C11 / C++11 and later).  
+<a href="#details">More...</a></p>
 <div class="textblock"><code>#include &quot;<a class="el" href="config_8h_source.html">config.h</a>&quot;</code><br />
 <code>#include &lt;stdint.h&gt;</code><br />
 <code>#include &lt;time.h&gt;</code><br />
@@ -127,7 +130,7 @@ Include dependency graph for atomic_wait.h:</div>
 <div class="dyncontent">
 <div class="center"><img src="atomic__wait_8h__incl.png" border="0" usemap="#ainclude_2wg14__atomic__waits_2atomic__wait_8h" loading="lazy" alt=""/></div>
 <map name="ainclude_2wg14__atomic__waits_2atomic__wait_8h" id="ainclude_2wg14__atomic__waits_2atomic__wait_8h">
-<area shape="rect" title=" " alt="" coords="99,5,244,46"/>
+<area shape="rect" title="Proposed WG14 atomic wait/notify support (C11 / C++11 and later)." alt="" coords="99,5,244,46"/>
 <area shape="rect" href="config_8h.html" title=" " alt="" coords="6,94,73,120"/>
 <area shape="poly" title=" " alt="" coords="137,49,74,88,71,84,140,44"/>
 <area shape="rect" title=" " alt="" coords="97,94,161,120"/>
@@ -146,6 +149,8 @@ Include dependency graph for atomic_wait.h:</div>
 <tr class="heading"><td colspan="2"><h2 id="header-define-members" class="groupheader"><a id="define-members" name="define-members"></a>
 Macros</h2></td></tr>
 <tr class="memitem:a5609c21b1956796899c8d9ad870b349c" id="r_a5609c21b1956796899c8d9ad870b349c"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a5609c21b1956796899c8d9ad870b349c">WG14_ATOMIC_WAITS_ATOMIC_PREFIX</a></td></tr>
+<tr class="memitem:a504cfc447cc7f2129a2523c76a050e28" id="r_a504cfc447cc7f2129a2523c76a050e28"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a504cfc447cc7f2129a2523c76a050e28">_WG14_ATOMIC_WAITS_STATIC_ASSERT</a>(cond,  msg)</td></tr>
+<tr class="memitem:aa0e6bd2fa626a18ad6e8813ee417d8a1" id="r_aa0e6bd2fa626a18ad6e8813ee417d8a1"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#aa0e6bd2fa626a18ad6e8813ee417d8a1">_WG14_ATOMIC_WAITS_IMPL_atomic_width_check</a>(object)</td></tr>
 <tr class="memitem:a4202f9f08d6666da50e8f1945136fffc" id="r_a4202f9f08d6666da50e8f1945136fffc"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a4202f9f08d6666da50e8f1945136fffc">_WG14_ATOMIC_WAITS_IMPL_atomic_wait</a>(object,  expected)</td></tr>
 <tr class="memitem:afadf53a4d9301f73d930736f6379a2a1" id="r_afadf53a4d9301f73d930736f6379a2a1"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#afadf53a4d9301f73d930736f6379a2a1">_WG14_ATOMIC_WAITS_IMPL_atomic_wait_explicit</a>(object,  expected,  order)</td></tr>
 <tr class="memitem:af09f51da783418456893fb0d236fcdf7" id="r_af09f51da783418456893fb0d236fcdf7"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#af09f51da783418456893fb0d236fcdf7">_WG14_ATOMIC_WAITS_IMPL_atomic_notify_one</a>(object)</td></tr>
@@ -158,10 +163,9 @@ Macros</h2></td></tr>
 <tr class="memdesc:a370c86afe635924299552864bedee925"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wake at least one thread blocked on <span class="tt">object</span>.  <br /></td></tr>
 <tr class="memitem:af7a8f1ca57f51a69c072599e29139ea5" id="r_af7a8f1ca57f51a69c072599e29139ea5"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#af7a8f1ca57f51a69c072599e29139ea5">atomic_notify_all</a>(object)</td></tr>
 <tr class="memdesc:af7a8f1ca57f51a69c072599e29139ea5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wake all threads blocked on <span class="tt">object</span>.  <br /></td></tr>
-<tr class="memitem:a3df7914d6a1cb93280d4fa9cbbac34ae" id="r_a3df7914d6a1cb93280d4fa9cbbac34ae"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a3df7914d6a1cb93280d4fa9cbbac34ae">_WG14_ATOMIC_WAITS_IMPL_atomic_wait_expected_check</a>(object)</td></tr>
+<tr class="memitem:ac9e421c7797c7540266b2deb7063c31a" id="r_ac9e421c7797c7540266b2deb7063c31a"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#ac9e421c7797c7540266b2deb7063c31a">_WG14_ATOMIC_WAITS_IMPL_atomic_native_check</a>(object)</td></tr>
 <tr class="memitem:ad973556345025dd5aba57bac4f52b0e9" id="r_ad973556345025dd5aba57bac4f52b0e9"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#ad973556345025dd5aba57bac4f52b0e9">atomic_wait_expected</a>(object,  expected,  duration,  success,  failure)</td></tr>
 <tr class="memdesc:ad973556345025dd5aba57bac4f52b0e9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Wait up to <span class="tt">duration</span> for <span class="tt">*object</span> to no longer equal <span class="tt">*expected</span>.  <br /></td></tr>
-<tr class="memitem:a8e0b1d81666dfdb5b5dbd163339c05a9" id="r_a8e0b1d81666dfdb5b5dbd163339c05a9"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a8e0b1d81666dfdb5b5dbd163339c05a9">_WG14_ATOMIC_WAITS_IMPL_atomic_notify_check</a>(object)</td></tr>
 <tr class="memitem:acc56d5bc0452d1f7047d20fe192beae4" id="r_acc56d5bc0452d1f7047d20fe192beae4"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#acc56d5bc0452d1f7047d20fe192beae4">atomic_notify</a>(object,  expected,  desired,  max_threads_to_wake,  success,  failure)</td></tr>
 <tr class="memdesc:acc56d5bc0452d1f7047d20fe192beae4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Atomically compare-exchange and notify up to <span class="tt">max_threads_to_wake</span> waiters.  <br /></td></tr>
 </table><table class="memberdecls">
@@ -188,7 +192,51 @@ Functions</h2></td></tr>
 <tr class="memitem:a7159bd906dca75566afb75ef89d0e386" id="r_a7159bd906dca75566afb75ef89d0e386"><td class="memItemLeft">int&#160;</td><td class="memItemRight"><a class="el" href="#a7159bd906dca75566afb75ef89d0e386">atomic_wait_expected_32</a> (const volatile atomic_uint_least32_t *__restrict object, uint_least32_t *__restrict expected, const struct timespec *__restrict duration, memory_order success, memory_order failure)</td></tr>
 <tr class="memitem:a918bfc45fb0b2a43200c47ae8a7aa9ec" id="r_a918bfc45fb0b2a43200c47ae8a7aa9ec"><td class="memItemLeft">int&#160;</td><td class="memItemRight"><a class="el" href="#a918bfc45fb0b2a43200c47ae8a7aa9ec">atomic_notify_32</a> (volatile atomic_uint_least32_t *__restrict object, uint_least32_t *__restrict expected, uint_least32_t desired, unsigned max_threads_to_wake, memory_order success, memory_order failure)</td></tr>
 </table>
-<a name="doc-define-members" id="doc-define-members"></a><h2 id="header-doc-define-members" class="groupheader">Macro Definition Documentation</h2>
+<a name="details" id="details"></a><h2 id="header-details" class="groupheader">Detailed Description</h2>
+<div class="textblock"><p>Proposed WG14 atomic wait/notify support (C11 / C++11 and later). </p>
+<p>Provides the proposed WG14 atomic wait/notify API: <code>atomic_wait</code>, <code>atomic_wait_explicit</code>, <code>atomic_notify_one</code>, <code>atomic_notify_all</code>, <code>atomic_wait_expected</code> and <code>atomic_notify</code>. They suspend and wake <em>threads</em> within a single address space.</p>
+<h1 class="doxsection"><a class="anchor" id="scope_process"></a>
+Process scope</h1>
+<p>Wait/notify synchronises threads of the calling process only; it is not guaranteed to synchronise across processes sharing memory (e.g. <code>mmap(MAP_SHARED)</code>):</p><ul>
+<li>On Linux the native 4-byte fast path parks the thread on the <em>user's</em> atomic object using the <em>shared</em> futex operations (<code>FUTEX_WAIT</code> and <code>FUTEX_WAKE</code>), deliberately <em>not</em> <code>FUTEX_PRIVATE</code>. <code>FUTEX_PRIVATE</code> keys waits in the process's private per-<code>mm</code> hash table, so a different process waking the same shared-memory address would never find the waiter and the wake would be silently lost. A shared futex costs negligible overhead and keeps the fast path usable if the object is in shared memory.</li>
+<li>The 1/2/8-byte widths (and the pthreads backend) park threads on a per-process hash-table proxy allocated by the library, so they are strictly intra-process regardless of the underlying primitive.</li>
+<li>Of the native fast paths, only Windows <code>WaitOnAddress/<code>WakeByAddress</code> is</code> documented to wake waiters across processes; macOS <code>__ulock_wait</code> is per-process. Cross-process wait/notify is therefore <em>untested</em> and <em>backend-dependent</em> and must not be relied upon; use your own process-shared primitive if you need it.</li>
+</ul>
+<h1 class="doxsection"><a class="anchor" id="timeout_semantics"></a>
+Timeout semantics</h1>
+<p>The <code>duration</code> argument of <code>atomic_wait_expected</code> is a <em>relative</em> remaining interval measured against a monotonic clock, or <code>NULL</code> for an infinite wait. Backends whose kernel primitive requires an absolute deadline (Linux <code>FUTEX_WAIT</code>, FreeBSD <code>_umtx_op</code> without <code>UMTX_ABSTIME</code>) convert the relative interval internally, so all backends agree on the relative contract. </p>
+
+<p class="definition">Definition in file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+</div><a name="doc-define-members" id="doc-define-members"></a><h2 id="header-doc-define-members" class="groupheader">Macro Definition Documentation</h2>
+<a id="ac9e421c7797c7540266b2deb7063c31a" name="ac9e421c7797c7540266b2deb7063c31a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac9e421c7797c7540266b2deb7063c31a">&#9670;&#160;</a></span>_WG14_ATOMIC_WAITS_IMPL_atomic_native_check</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define _WG14_ATOMIC_WAITS_IMPL_atomic_native_check</td>
+          <td>(</td>
+          <td class="paramtype"></td>          <td class="paramname"><span class="paramname"><em>object</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<b>Value:</b><div class="fragment"><div class="line">((void) <span class="keyword">sizeof</span>(<span class="keyword">struct </span>{                                                      \</div>
+<div class="line">  _Static_assert((<span class="keyword">sizeof</span>(*(<span class="keywordtype">object</span>)) ==                                       \</div>
+<div class="line">                  <span class="keyword">sizeof</span>(<a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(                           \</div>
+<div class="line">                  <a class="code hl_typedef" href="#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a>))),                              \</div>
+<div class="line">                 <span class="stringliteral">&quot;wg14_atomic_waits: sizeof(*object) must equal &quot;</span>           \</div>
+<div class="line">                 <span class="stringliteral">&quot;sizeof(uint_native_wait_notify_t) (4 bytes)&quot;</span>);              \</div>
+<div class="line">  <span class="keywordtype">int</span> _unused;                                                                \</div>
+<div class="line">}))</div>
+<div class="ttc" id="aatomic__wait_8h_html_ac640d2bb1d1e9963ae2c0376c2113c6a"><div class="ttname"><a href="#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a></div><div class="ttdeci">uint_least32_t uint_native_wait_notify_t</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00082">atomic_wait.h:82</a></div></div>
+<div class="ttc" id="aconfig_8h_html_a1516b2ba7caf9cdbad11b2c1f104eb2d"><div class="ttname"><a href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a></div><div class="ttdeci">#define WG14_ATOMIC_WAITS_PREFIX(x)</div><div class="ttdef"><b>Definition</b> <a href="config_8h_source.html#l00026">config.h:26</a></div></div>
+</div><!-- fragment -->
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00312">312</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+
+</div>
+</div>
 <a id="ac3069eef663e2fec5c94a81fd092468a" name="ac3069eef663e2fec5c94a81fd092468a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ac3069eef663e2fec5c94a81fd092468a">&#9670;&#160;</a></span>_WG14_ATOMIC_WAITS_IMPL_atomic_notify_all</h2>
 
@@ -205,6 +253,7 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 <b>Value:</b><div class="fragment"><div class="line"><span class="keywordflow">do</span>                                                                           \</div>
 <div class="line">{                                                                            \</div>
+<div class="line">  _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(<span class="keywordtype">object</span>);                        \</div>
 <div class="line">  if(<span class="keyword">sizeof</span>(*(<span class="keywordtype">object</span>)) == 1)                                                 \</div>
 <div class="line">    WG14_ATOMIC_WAITS_PREFIX(<a class="code hl_function" href="#a46f321d7d2ac7f9b6c995c5254627e60">atomic_notify_all_1</a>)(                           \</div>
 <div class="line">    (<span class="keyword">volatile</span> <a class="code hl_define" href="#a5609c21b1956796899c8d9ad870b349c">WG14_ATOMIC_WAITS_ATOMIC_PREFIX</a> atomic_uint_least8_t           \</div>
@@ -226,38 +275,9 @@ Functions</h2></td></tr>
 <div class="ttc" id="aatomic__wait_8h_html_a46f321d7d2ac7f9b6c995c5254627e60"><div class="ttname"><a href="#a46f321d7d2ac7f9b6c995c5254627e60">atomic_notify_all_1</a></div><div class="ttdeci">void atomic_notify_all_1(volatile atomic_uint_least8_t *object)</div></div>
 <div class="ttc" id="aatomic__wait_8h_html_a4dc6077597fb42be7fa60859a2c20468"><div class="ttname"><a href="#a4dc6077597fb42be7fa60859a2c20468">atomic_notify_all_8</a></div><div class="ttdeci">void atomic_notify_all_8(volatile atomic_uint_least64_t *object)</div></div>
 <div class="ttc" id="aatomic__wait_8h_html_a557844badd5539534c9e7b8d34f586a0"><div class="ttname"><a href="#a557844badd5539534c9e7b8d34f586a0">atomic_notify_all_4</a></div><div class="ttdeci">void atomic_notify_all_4(volatile atomic_uint_least32_t *object)</div></div>
-<div class="ttc" id="aatomic__wait_8h_html_a5609c21b1956796899c8d9ad870b349c"><div class="ttname"><a href="#a5609c21b1956796899c8d9ad870b349c">WG14_ATOMIC_WAITS_ATOMIC_PREFIX</a></div><div class="ttdeci">#define WG14_ATOMIC_WAITS_ATOMIC_PREFIX</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00035">atomic_wait.h:35</a></div></div>
+<div class="ttc" id="aatomic__wait_8h_html_a5609c21b1956796899c8d9ad870b349c"><div class="ttname"><a href="#a5609c21b1956796899c8d9ad870b349c">WG14_ATOMIC_WAITS_ATOMIC_PREFIX</a></div><div class="ttdeci">#define WG14_ATOMIC_WAITS_ATOMIC_PREFIX</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00073">atomic_wait.h:73</a></div></div>
 </div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00182">182</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
-
-</div>
-</div>
-<a id="a8e0b1d81666dfdb5b5dbd163339c05a9" name="a8e0b1d81666dfdb5b5dbd163339c05a9"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a8e0b1d81666dfdb5b5dbd163339c05a9">&#9670;&#160;</a></span>_WG14_ATOMIC_WAITS_IMPL_atomic_notify_check</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">#define _WG14_ATOMIC_WAITS_IMPL_atomic_notify_check</td>
-          <td>(</td>
-          <td class="paramtype"></td>          <td class="paramname"><span class="paramname"><em>object</em></span></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-<b>Value:</b><div class="fragment"><div class="line">((void) <span class="keyword">sizeof</span>(<span class="keyword">struct </span>{                                                            \</div>
-<div class="line">  int                                                                              \</div>
-<div class="line">  _WG14_ATOMIC_WAITS_IMPL_atomic_notify_width_must_match_uint_native_wait_notify_t \</div>
-<div class="line">      : (<span class="keyword">sizeof</span>(*(object)) ==                                                      \</div>
-<div class="line">         sizeof(<a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(<a class="code hl_typedef" href="#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a>))) ?            \</div>
-<div class="line">        1 :                                                                        \</div>
-<div class="line">        -1;                                                                        \</div>
-<div class="line">}))</div>
-<div class="ttc" id="aatomic__wait_8h_html_ac640d2bb1d1e9963ae2c0376c2113c6a"><div class="ttname"><a href="#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a></div><div class="ttdeci">uint_least32_t uint_native_wait_notify_t</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00044">atomic_wait.h:44</a></div></div>
-<div class="ttc" id="aconfig_8h_html_a1516b2ba7caf9cdbad11b2c1f104eb2d"><div class="ttname"><a href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a></div><div class="ttdeci">#define WG14_ATOMIC_WAITS_PREFIX(x)</div><div class="ttdef"><b>Definition</b> <a href="config_8h_source.html#l00026">config.h:26</a></div></div>
-</div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00281">281</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00235">235</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -277,6 +297,7 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 <b>Value:</b><div class="fragment"><div class="line"><span class="keywordflow">do</span>                                                                           \</div>
 <div class="line">{                                                                            \</div>
+<div class="line">  _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(<span class="keywordtype">object</span>);                        \</div>
 <div class="line">  if(<span class="keyword">sizeof</span>(*(<span class="keywordtype">object</span>)) == 1)                                                 \</div>
 <div class="line">    WG14_ATOMIC_WAITS_PREFIX(<a class="code hl_function" href="#af106134bfd06b0facc05acd31206f111">atomic_notify_one_1</a>)(                           \</div>
 <div class="line">    (<span class="keyword">volatile</span> <a class="code hl_define" href="#a5609c21b1956796899c8d9ad870b349c">WG14_ATOMIC_WAITS_ATOMIC_PREFIX</a> atomic_uint_least8_t           \</div>
@@ -299,7 +320,7 @@ Functions</h2></td></tr>
 <div class="ttc" id="aatomic__wait_8h_html_ae4099b85230bc7ecea1495d11669550b"><div class="ttname"><a href="#ae4099b85230bc7ecea1495d11669550b">atomic_notify_one_8</a></div><div class="ttdeci">void atomic_notify_one_8(volatile atomic_uint_least64_t *object)</div></div>
 <div class="ttc" id="aatomic__wait_8h_html_af106134bfd06b0facc05acd31206f111"><div class="ttname"><a href="#af106134bfd06b0facc05acd31206f111">atomic_notify_one_1</a></div><div class="ttdeci">void atomic_notify_one_1(volatile atomic_uint_least8_t *object)</div></div>
 </div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00161">161</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00213">213</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -323,6 +344,7 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 <b>Value:</b><div class="fragment"><div class="line"><span class="keywordflow">do</span>                                                                           \</div>
 <div class="line">{                                                                            \</div>
+<div class="line">  _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(<span class="keywordtype">object</span>);                        \</div>
 <div class="line">  if(<span class="keyword">sizeof</span>(*(<span class="keywordtype">object</span>)) == 1)                                                 \</div>
 <div class="line">    WG14_ATOMIC_WAITS_PREFIX(<a class="code hl_function" href="#a4b3f0000ec7c44216d59352915799a6b">atomic_wait_1</a>)(                                 \</div>
 <div class="line">    (<span class="keyword">const</span> <span class="keyword">volatile</span> <a class="code hl_define" href="#a5609c21b1956796899c8d9ad870b349c">WG14_ATOMIC_WAITS_ATOMIC_PREFIX</a> atomic_uint_least8_t     \</div>
@@ -353,34 +375,7 @@ Functions</h2></td></tr>
 <div class="ttc" id="aatomic__wait_8h_html_ad3d4317db1d9648ee8b83219b789e693"><div class="ttname"><a href="#ad3d4317db1d9648ee8b83219b789e693">atomic_wait_4</a></div><div class="ttdeci">void atomic_wait_4(const volatile atomic_uint_least32_t *object, uint_least32_t expected, memory_order order)</div></div>
 <div class="ttc" id="aatomic__wait_8h_html_af498ca072e9b7635d446f2957938554b"><div class="ttname"><a href="#af498ca072e9b7635d446f2957938554b">atomic_wait_8</a></div><div class="ttdeci">void atomic_wait_8(const volatile atomic_uint_least64_t *object, uint_least64_t expected, memory_order order)</div></div>
 </div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00107">107</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
-
-</div>
-</div>
-<a id="a3df7914d6a1cb93280d4fa9cbbac34ae" name="a3df7914d6a1cb93280d4fa9cbbac34ae"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a3df7914d6a1cb93280d4fa9cbbac34ae">&#9670;&#160;</a></span>_WG14_ATOMIC_WAITS_IMPL_atomic_wait_expected_check</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">#define _WG14_ATOMIC_WAITS_IMPL_atomic_wait_expected_check</td>
-          <td>(</td>
-          <td class="paramtype"></td>          <td class="paramname"><span class="paramname"><em>object</em></span></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-<b>Value:</b><div class="fragment"><div class="line">((void) <span class="keyword">sizeof</span>(<span class="keyword">struct </span>{                                                                   \</div>
-<div class="line">  int                                                                                     \</div>
-<div class="line">  _WG14_ATOMIC_WAITS_IMPL_atomic_wait_expected_width_must_match_uint_native_wait_notify_t \</div>
-<div class="line">      : (<span class="keyword">sizeof</span>(*(object)) ==                                                             \</div>
-<div class="line">         sizeof(<a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(<a class="code hl_typedef" href="#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a>))) ?                   \</div>
-<div class="line">        1 :                                                                               \</div>
-<div class="line">        -1;                                                                               \</div>
-<div class="line">}))</div>
-</div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00243">243</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00157">157</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -409,6 +404,7 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 <b>Value:</b><div class="fragment"><div class="line"><span class="keywordflow">do</span>                                                                           \</div>
 <div class="line">{                                                                            \</div>
+<div class="line">  _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(<span class="keywordtype">object</span>);                        \</div>
 <div class="line">  if(<span class="keyword">sizeof</span>(*(<span class="keywordtype">object</span>)) == 1)                                                 \</div>
 <div class="line">    WG14_ATOMIC_WAITS_PREFIX(<a class="code hl_function" href="#a4b3f0000ec7c44216d59352915799a6b">atomic_wait_1</a>)(                                 \</div>
 <div class="line">    (<span class="keyword">const</span> <span class="keyword">volatile</span> <a class="code hl_define" href="#a5609c21b1956796899c8d9ad870b349c">WG14_ATOMIC_WAITS_ATOMIC_PREFIX</a> atomic_uint_least8_t     \</div>
@@ -431,7 +427,55 @@ Functions</h2></td></tr>
 <div class="line">      (uint_least64_t) (expected), (order));                                  \</div>
 <div class="line">} <span class="keywordflow">while</span>(0)</div>
 </div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00136">136</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00187">187</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+
+</div>
+</div>
+<a id="aa0e6bd2fa626a18ad6e8813ee417d8a1" name="aa0e6bd2fa626a18ad6e8813ee417d8a1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa0e6bd2fa626a18ad6e8813ee417d8a1">&#9670;&#160;</a></span>_WG14_ATOMIC_WAITS_IMPL_atomic_width_check</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define _WG14_ATOMIC_WAITS_IMPL_atomic_width_check</td>
+          <td>(</td>
+          <td class="paramtype"></td>          <td class="paramname"><span class="paramname"><em>object</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<b>Value:</b><div class="fragment"><div class="line"><a class="code hl_define" href="#a504cfc447cc7f2129a2523c76a050e28">_WG14_ATOMIC_WAITS_STATIC_ASSERT</a>(                                             \</div>
+<div class="line">((<span class="keyword">sizeof</span>(*(<span class="keywordtype">object</span>)) == 1) || (<span class="keyword">sizeof</span>(*(<span class="keywordtype">object</span>)) == 2) ||                       \</div>
+<div class="line"> (<span class="keyword">sizeof</span>(*(<span class="keywordtype">object</span>)) == 4) || (<span class="keyword">sizeof</span>(*(<span class="keywordtype">object</span>)) == 8)),                        \</div>
+<div class="line"><span class="stringliteral">&quot;wg14_atomic_waits: sizeof(*object) must be 1, 2, 4, or 8 bytes&quot;</span>)</div>
+<div class="ttc" id="aatomic__wait_8h_html_a504cfc447cc7f2129a2523c76a050e28"><div class="ttname"><a href="#a504cfc447cc7f2129a2523c76a050e28">_WG14_ATOMIC_WAITS_STATIC_ASSERT</a></div><div class="ttdeci">#define _WG14_ATOMIC_WAITS_STATIC_ASSERT(cond, msg)</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00148">atomic_wait.h:148</a></div></div>
+</div><!-- fragment -->
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00151">151</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+
+</div>
+</div>
+<a id="a504cfc447cc7f2129a2523c76a050e28" name="a504cfc447cc7f2129a2523c76a050e28"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a504cfc447cc7f2129a2523c76a050e28">&#9670;&#160;</a></span>_WG14_ATOMIC_WAITS_STATIC_ASSERT</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define _WG14_ATOMIC_WAITS_STATIC_ASSERT</td>
+          <td>(</td>
+          <td class="paramtype"></td>          <td class="paramname"><span class="paramname"><em>cond</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"></td>          <td class="paramname"><span class="paramname"><em>msg</em></span>&#160;)</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<b>Value:</b><div class="fragment"><div class="line"><span class="keyword">_Static_assert</span>((cond), msg)</div>
+</div><!-- fragment -->
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00148">148</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -474,13 +518,13 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 <b>Value:</b><div class="fragment"><div class="line">(                                                                            \</div>
-<div class="line">_WG14_ATOMIC_WAITS_IMPL_atomic_notify_check(<span class="keywordtype">object</span>),                         \</div>
+<div class="line">_WG14_ATOMIC_WAITS_IMPL_atomic_native_check(<span class="keywordtype">object</span>),                            \</div>
 <div class="line">WG14_ATOMIC_WAITS_PREFIX(<a class="code hl_function" href="#a918bfc45fb0b2a43200c47ae8a7aa9ec">atomic_notify_32</a>)(                                  \</div>
-<div class="line">(<span class="keyword">volatile</span> <a class="code hl_define" href="#a5609c21b1956796899c8d9ad870b349c">WG14_ATOMIC_WAITS_ATOMIC_PREFIX</a> <a class="code hl_typedef" href="#a250ac6b34cdc2846c448168b6811ff6d">atomic_uint_native_wait_notify_t</a>   \</div>
-<div class="line"> *) (<span class="keywordtype">object</span>),                                                                \</div>
+<div class="line">(<span class="keyword">volatile</span> <a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(<a class="code hl_typedef" href="#a250ac6b34cdc2846c448168b6811ff6d">atomic_uint_native_wait_notify_t</a>) *)        \</div>
+<div class="line">(<span class="keywordtype">object</span>),                                                                       \</div>
 <div class="line">(<a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(<a class="code hl_typedef" href="#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a>) *) (expected),          \</div>
 <div class="line">(desired), (max_threads_to_wake), (success), (failure)))</div>
-<div class="ttc" id="aatomic__wait_8h_html_a250ac6b34cdc2846c448168b6811ff6d"><div class="ttname"><a href="#a250ac6b34cdc2846c448168b6811ff6d">atomic_uint_native_wait_notify_t</a></div><div class="ttdeci">atomic_uint_least32_t atomic_uint_native_wait_notify_t</div><div class="ttdoc">_Atomic-qualified uint_native_wait_notify_t.</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00051">atomic_wait.h:51</a></div></div>
+<div class="ttc" id="aatomic__wait_8h_html_a250ac6b34cdc2846c448168b6811ff6d"><div class="ttname"><a href="#a250ac6b34cdc2846c448168b6811ff6d">atomic_uint_native_wait_notify_t</a></div><div class="ttdeci">atomic_uint_least32_t atomic_uint_native_wait_notify_t</div><div class="ttdoc">_Atomic-qualified uint_native_wait_notify_t.</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00089">atomic_wait.h:89</a></div></div>
 <div class="ttc" id="aatomic__wait_8h_html_a918bfc45fb0b2a43200c47ae8a7aa9ec"><div class="ttname"><a href="#a918bfc45fb0b2a43200c47ae8a7aa9ec">atomic_notify_32</a></div><div class="ttdeci">int atomic_notify_32(volatile atomic_uint_least32_t *__restrict object, uint_least32_t *__restrict expected, uint_least32_t desired, unsigned max_threads_to_wake, memory_order success, memory_order failure)</div></div>
 </div><!-- fragment -->
 <p>Atomically compare-exchange and notify up to <span class="tt">max_threads_to_wake</span> waiters. </p>
@@ -505,7 +549,7 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00309">309</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00376">376</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -524,7 +568,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 <b>Value:</b><div class="fragment"><div class="line"><a class="code hl_define" href="#ac3069eef663e2fec5c94a81fd092468a">_WG14_ATOMIC_WAITS_IMPL_atomic_notify_all</a>((<span class="keywordtype">object</span>))</div>
-<div class="ttc" id="aatomic__wait_8h_html_ac3069eef663e2fec5c94a81fd092468a"><div class="ttname"><a href="#ac3069eef663e2fec5c94a81fd092468a">_WG14_ATOMIC_WAITS_IMPL_atomic_notify_all</a></div><div class="ttdeci">#define _WG14_ATOMIC_WAITS_IMPL_atomic_notify_all(object)</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00182">atomic_wait.h:182</a></div></div>
+<div class="ttc" id="aatomic__wait_8h_html_ac3069eef663e2fec5c94a81fd092468a"><div class="ttname"><a href="#ac3069eef663e2fec5c94a81fd092468a">_WG14_ATOMIC_WAITS_IMPL_atomic_notify_all</a></div><div class="ttdeci">#define _WG14_ATOMIC_WAITS_IMPL_atomic_notify_all(object)</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00235">atomic_wait.h:235</a></div></div>
 </div><!-- fragment -->
 <p>Wake all threads blocked on <span class="tt">object</span>. </p>
 <p>Dispatch macro. Width of <span class="tt">*object</span> must be 1, 2, 4, or 8 bytes. If no thread is currently blocked on <span class="tt">object</span>, the call has no effect. </p><dl class="params"><dt>Parameters</dt><dd>
@@ -534,7 +578,7 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00240">240</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00294">294</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -553,7 +597,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 <b>Value:</b><div class="fragment"><div class="line"><a class="code hl_define" href="#af09f51da783418456893fb0d236fcdf7">_WG14_ATOMIC_WAITS_IMPL_atomic_notify_one</a>((<span class="keywordtype">object</span>))</div>
-<div class="ttc" id="aatomic__wait_8h_html_af09f51da783418456893fb0d236fcdf7"><div class="ttname"><a href="#af09f51da783418456893fb0d236fcdf7">_WG14_ATOMIC_WAITS_IMPL_atomic_notify_one</a></div><div class="ttdeci">#define _WG14_ATOMIC_WAITS_IMPL_atomic_notify_one(object)</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00161">atomic_wait.h:161</a></div></div>
+<div class="ttc" id="aatomic__wait_8h_html_af09f51da783418456893fb0d236fcdf7"><div class="ttname"><a href="#af09f51da783418456893fb0d236fcdf7">_WG14_ATOMIC_WAITS_IMPL_atomic_notify_one</a></div><div class="ttdeci">#define _WG14_ATOMIC_WAITS_IMPL_atomic_notify_one(object)</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00213">atomic_wait.h:213</a></div></div>
 </div><!-- fragment -->
 <p>Wake at least one thread blocked on <span class="tt">object</span>. </p>
 <p>Dispatch macro. Width of <span class="tt">*object</span> must be 1, 2, 4, or 8 bytes. If no thread is currently blocked on <span class="tt">object</span>, the call has no effect. </p><dl class="params"><dt>Parameters</dt><dd>
@@ -563,7 +607,7 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00231">231</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00285">285</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -586,7 +630,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 <b>Value:</b><div class="fragment"><div class="line"><a class="code hl_define" href="#a4202f9f08d6666da50e8f1945136fffc">_WG14_ATOMIC_WAITS_IMPL_atomic_wait</a>((<span class="keywordtype">object</span>), (expected))</div>
-<div class="ttc" id="aatomic__wait_8h_html_a4202f9f08d6666da50e8f1945136fffc"><div class="ttname"><a href="#a4202f9f08d6666da50e8f1945136fffc">_WG14_ATOMIC_WAITS_IMPL_atomic_wait</a></div><div class="ttdeci">#define _WG14_ATOMIC_WAITS_IMPL_atomic_wait(object, expected)</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00107">atomic_wait.h:107</a></div></div>
+<div class="ttc" id="aatomic__wait_8h_html_a4202f9f08d6666da50e8f1945136fffc"><div class="ttname"><a href="#a4202f9f08d6666da50e8f1945136fffc">_WG14_ATOMIC_WAITS_IMPL_atomic_wait</a></div><div class="ttdeci">#define _WG14_ATOMIC_WAITS_IMPL_atomic_wait(object, expected)</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00157">atomic_wait.h:157</a></div></div>
 </div><!-- fragment -->
 <p>Block the calling thread until <span class="tt">*object</span> equals <span class="tt">expected</span>. </p>
 <p>Dispatch macro. Width of <span class="tt">*object</span> must be 1, 2, 4, or 8 bytes. Uses <span class="tt">memory_order_seq_cst</span> for the load comparison. If woken spuriously (value still equals <span class="tt">expected</span>), parks again. </p><dl class="params"><dt>Parameters</dt><dd>
@@ -597,7 +641,7 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00211">211</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00265">265</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -635,17 +679,17 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 <b>Value:</b><div class="fragment"><div class="line">(                                                                               \</div>
-<div class="line">_WG14_ATOMIC_WAITS_IMPL_atomic_wait_expected_check(<span class="keywordtype">object</span>),                     \</div>
+<div class="line">_WG14_ATOMIC_WAITS_IMPL_atomic_native_check(<span class="keywordtype">object</span>),                            \</div>
 <div class="line">WG14_ATOMIC_WAITS_PREFIX(<a class="code hl_function" href="#a7159bd906dca75566afb75ef89d0e386">atomic_wait_expected_32</a>)(                              \</div>
 <div class="line">(                                                                               \</div>
-<div class="line"><span class="keyword">const</span> <span class="keyword">volatile</span> <a class="code hl_define" href="#a5609c21b1956796899c8d9ad870b349c">WG14_ATOMIC_WAITS_ATOMIC_PREFIX</a> <a class="code hl_typedef" href="#a250ac6b34cdc2846c448168b6811ff6d">atomic_uint_native_wait_notify_t</a> \</div>
+<div class="line"><span class="keyword">const</span> <span class="keyword">volatile</span> <a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(<a class="code hl_typedef" href="#a250ac6b34cdc2846c448168b6811ff6d">atomic_uint_native_wait_notify_t</a>)     \</div>
 <div class="line">*) (<span class="keywordtype">object</span>),                                                                    \</div>
 <div class="line">(<a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(<a class="code hl_typedef" href="#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a>) *) (expected),             \</div>
 <div class="line">(duration), (success), (failure)))</div>
 <div class="ttc" id="aatomic__wait_8h_html_a7159bd906dca75566afb75ef89d0e386"><div class="ttname"><a href="#a7159bd906dca75566afb75ef89d0e386">atomic_wait_expected_32</a></div><div class="ttdeci">int atomic_wait_expected_32(const volatile atomic_uint_least32_t *__restrict object, uint_least32_t *__restrict expected, const struct timespec *__restrict duration, memory_order success, memory_order failure)</div></div>
 </div><!-- fragment -->
 <p>Wait up to <span class="tt">duration</span> for <span class="tt">*object</span> to no longer equal <span class="tt">*expected</span>. </p>
-<p><span class="tt">sizeof(*object)</span> must equal <span class="tt">sizeof(uint_native_wait_notify_t)</span>. If <span class="tt">*object</span> does not equal <span class="tt">*expected</span>, returns immediately. Otherwise suspends the thread until notified or until <span class="tt">duration</span> passes. On wake, re-compares; if still equal, parks again. Total accumulated wait is at least <span class="tt">*duration</span>. On return, <span class="tt">*expected</span> is updated to the most recently loaded value. </p><dl class="params"><dt>Parameters</dt><dd>
+<p><span class="tt">sizeof(*object)</span> must equal <span class="tt">sizeof(uint_native_wait_notify_t)</span>. If <span class="tt">*object</span> does not equal <span class="tt">*expected</span>, returns immediately. Otherwise suspends the thread until notified or until <span class="tt">duration</span> passes. On wake, re-compares; if still equal, parks again. Total accumulated wait is at least <span class="tt">*duration</span>. On return, <span class="tt">*expected</span> is updated to the most recently loaded value. <span class="tt">duration</span> is a relative remaining interval measured against a monotonic clock, or <span class="tt">NULL</span> for no timeout. Every backend implements it as a relative duration: macOS and Windows consume it directly, Linux converts it to an absolute CLOCK_MONOTONIC deadline for <span class="tt">FUTEX_WAIT</span>, FreeBSD leaves the <span class="tt">UMTX_ABSTIME</span> flag clear (making the kernel treat it as relative), and the pthreads backend converts it to an absolute <span class="tt">pthread_cond_timedwait</span> deadline internally. </p><dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">object</td><td>Pointer to a <span class="tt">volatile _Atomic uint_least32_t</span>. </td></tr>
     <tr><td class="paramname">expected</td><td>Pointer to value to compare against; updated on return. </td></tr>
@@ -665,7 +709,7 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00271">271</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00348">348</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -693,7 +737,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 <b>Value:</b><div class="fragment"><div class="line"><a class="code hl_define" href="#afadf53a4d9301f73d930736f6379a2a1">_WG14_ATOMIC_WAITS_IMPL_atomic_wait_explicit</a>((<span class="keywordtype">object</span>), (expected), (order))</div>
-<div class="ttc" id="aatomic__wait_8h_html_afadf53a4d9301f73d930736f6379a2a1"><div class="ttname"><a href="#afadf53a4d9301f73d930736f6379a2a1">_WG14_ATOMIC_WAITS_IMPL_atomic_wait_explicit</a></div><div class="ttdeci">#define _WG14_ATOMIC_WAITS_IMPL_atomic_wait_explicit(object, expected, order)</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00136">atomic_wait.h:136</a></div></div>
+<div class="ttc" id="aatomic__wait_8h_html_afadf53a4d9301f73d930736f6379a2a1"><div class="ttname"><a href="#afadf53a4d9301f73d930736f6379a2a1">_WG14_ATOMIC_WAITS_IMPL_atomic_wait_explicit</a></div><div class="ttdeci">#define _WG14_ATOMIC_WAITS_IMPL_atomic_wait_explicit(object, expected, order)</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00187">atomic_wait.h:187</a></div></div>
 </div><!-- fragment -->
 <p>Block until <span class="tt">*object</span> equals <span class="tt">expected</span>, using a caller-specified memory order. </p>
 <p>Dispatch macro. Width of <span class="tt">*object</span> must be 1, 2, 4, or 8 bytes. If woken spuriously (value still equals <span class="tt">expected</span>), parks again. </p><dl class="params"><dt>Parameters</dt><dd>
@@ -705,7 +749,7 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00222">222</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00276">276</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -721,7 +765,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00035">35</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00073">73</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -741,7 +785,7 @@ Functions</h2></td></tr>
 <p><span class="tt">_Atomic</span>-qualified <span class="tt"><a class="el" href="#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a></span>. </p>
 <p>The atomic type used for wait/notify on objects of type <span class="tt"><a class="el" href="#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a></span>. </p>
 
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00051">51</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00089">89</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>
@@ -759,7 +803,7 @@ Functions</h2></td></tr>
 <p>Smallest unsigned integer type suitable for atomic wait/notify on this platform. Always <span class="tt">uint_least32_t</span>.</p>
 <p><span class="tt">sizeof(uint_native_wait_notify_t)</span> is guaranteed to be 4 bytes, the largest atomic width supported by all WG14-compliant platforms. </p>
 
-<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00044">44</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="atomic__wait_8h_source.html#l00082">82</a> of file <a class="el" href="atomic__wait_8h_source.html">atomic_wait.h</a>.</p>
 
 </div>
 </div>

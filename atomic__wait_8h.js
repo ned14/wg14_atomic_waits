@@ -1,11 +1,12 @@
 var atomic__wait_8h =
 [
+    [ "_WG14_ATOMIC_WAITS_IMPL_atomic_native_check", "atomic__wait_8h.html#ac9e421c7797c7540266b2deb7063c31a", null ],
     [ "_WG14_ATOMIC_WAITS_IMPL_atomic_notify_all", "atomic__wait_8h.html#ac3069eef663e2fec5c94a81fd092468a", null ],
-    [ "_WG14_ATOMIC_WAITS_IMPL_atomic_notify_check", "atomic__wait_8h.html#a8e0b1d81666dfdb5b5dbd163339c05a9", null ],
     [ "_WG14_ATOMIC_WAITS_IMPL_atomic_notify_one", "atomic__wait_8h.html#af09f51da783418456893fb0d236fcdf7", null ],
     [ "_WG14_ATOMIC_WAITS_IMPL_atomic_wait", "atomic__wait_8h.html#a4202f9f08d6666da50e8f1945136fffc", null ],
-    [ "_WG14_ATOMIC_WAITS_IMPL_atomic_wait_expected_check", "atomic__wait_8h.html#a3df7914d6a1cb93280d4fa9cbbac34ae", null ],
     [ "_WG14_ATOMIC_WAITS_IMPL_atomic_wait_explicit", "atomic__wait_8h.html#afadf53a4d9301f73d930736f6379a2a1", null ],
+    [ "_WG14_ATOMIC_WAITS_IMPL_atomic_width_check", "atomic__wait_8h.html#aa0e6bd2fa626a18ad6e8813ee417d8a1", null ],
+    [ "_WG14_ATOMIC_WAITS_STATIC_ASSERT", "atomic__wait_8h.html#a504cfc447cc7f2129a2523c76a050e28", null ],
     [ "atomic_notify", "atomic__wait_8h.html#acc56d5bc0452d1f7047d20fe192beae4", null ],
     [ "atomic_notify_all", "atomic__wait_8h.html#af7a8f1ca57f51a69c072599e29139ea5", null ],
     [ "atomic_notify_one", "atomic__wait_8h.html#a370c86afe635924299552864bedee925", null ],

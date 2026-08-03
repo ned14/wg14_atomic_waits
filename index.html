@@ -128,7 +128,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('index.html',''
 <li>Windows uses <span class="tt">WaitOnAddress</span>/<span class="tt">WakeByAddressSingle</span>/<span class="tt">WakeByAddressAll</span>.</li>
 <li>macOS/iOS uses <span class="tt">ulock_wait</span>/<span class="tt">ulock_wake</span>.</li>
 <li>Linux uses <span class="tt">SYS_futex</span>.</li>
-<li>FreeBSD uses <span class="tt">_umtx_time_spec</span> (<span class="tt">UMTX_OP_WAIT_UINT</span> for 4-byte, <span class="tt">UMTX_OP_WAIT</span> for native-width).</li>
+<li>FreeBSD uses <span class="tt">_umtx_op</span> (<span class="tt">UMTX_OP_WAIT_UINT</span> for 4-byte, <span class="tt">UMTX_OP_WAIT</span> for 8-byte).</li>
 <li>Other POSIX falls back to <span class="tt">pthread_cond_wait</span>/<span class="tt">pthread_cond_signal</span>.</li>
 </ul>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md1"></a>
@@ -136,24 +136,110 @@ Example of use</h1>
 <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="atomic__wait_8h.html">wg14_atomic_waits/atomic_wait.h</a>&gt;</span></div>
 <div class="line"><span class="preprocessor">#include &lt;stdatomic.h&gt;</span></div>
 <div class="line"> </div>
+<div class="line"><span class="comment">// Blocks until *value no longer equals *expected (or until the duration</span></div>
+<div class="line"><span class="comment">// expires). On return *expected is updated to the observed value, and the</span></div>
+<div class="line"><span class="comment">// return value is positive if the thread actually suspended at least once.</span></div>
 <div class="line"><span class="keywordtype">int</span> worker(atomic_int *value)</div>
 <div class="line">{</div>
 <div class="line">  <span class="keywordtype">int</span> expected = 0;</div>
-<div class="line">  <a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(<a class="code hl_define" href="atomic__wait_8h.html#a62e860802236b0b927555fb4ee3ced3c">atomic_wait</a>)(value, expected);</div>
-<div class="line">  <span class="keywordflow">return</span> *value;</div>
+<div class="line">  <a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(<a class="code hl_define" href="atomic__wait_8h.html#ad973556345025dd5aba57bac4f52b0e9">atomic_wait_expected</a>)(</div>
+<div class="line">  value,                       <span class="comment">// object whose value is compared and waited on</span></div>
+<div class="line">  &amp;expected,                   <span class="comment">// expected value; *expected is updated on return</span></div>
+<div class="line">  NULL,                        <span class="comment">// duration: NULL waits forever, else a timespec</span></div>
+<div class="line">  memory_order_seq_cst,        <span class="comment">// success order: the load that ends the wait</span></div>
+<div class="line">  memory_order_seq_cst         <span class="comment">// failure order: the load on timeout or retry</span></div>
+<div class="line">  );</div>
+<div class="line">  <span class="keywordflow">return</span> expected;</div>
 <div class="line">}</div>
 <div class="line"> </div>
-<div class="line"><span class="keywordtype">void</span> set_value(atomic_int *value)</div>
+<div class="line"><span class="comment">// Atomically stores *value = desired (provided it still equals *expected) and</span></div>
+<div class="line"><span class="comment">// wakes up to max_threads_to_wake parked waiters in a single operation.</span></div>
+<div class="line"><span class="comment">// Returns a positive value on success (1 + the number woken on some</span></div>
+<div class="line"><span class="comment">// platforms), 0 if the compare-exchange failed, or a negative error.</span></div>
+<div class="line"><span class="keywordtype">int</span> set_value(atomic_int *value)</div>
 <div class="line">{</div>
-<div class="line">  atomic_store_explicit(value, 1, memory_order_seq_cst);</div>
-<div class="line">  <a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(<a class="code hl_define" href="atomic__wait_8h.html#a370c86afe635924299552864bedee925">atomic_notify_one</a>)(value);</div>
+<div class="line">  <span class="keywordtype">int</span> expected = 0;</div>
+<div class="line">  <span class="keywordflow">return</span> <a class="code hl_define" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a>(<a class="code hl_define" href="atomic__wait_8h.html#acc56d5bc0452d1f7047d20fe192beae4">atomic_notify</a>)(</div>
+<div class="line">  value,                       <span class="comment">// object whose value is compared and exchanged</span></div>
+<div class="line">  &amp;expected,                   <span class="comment">// expected value; updated on a failed exchange</span></div>
+<div class="line">  1,                           <span class="comment">// desired: value stored on a successful exchange</span></div>
+<div class="line">  1,                           <span class="comment">// max_threads_to_wake: waiters to wake at most</span></div>
+<div class="line">  memory_order_seq_cst,        <span class="comment">// success order: the successful exchange</span></div>
+<div class="line">  memory_order_seq_cst         <span class="comment">// failure order: the failed exchange</span></div>
+<div class="line">  );</div>
 <div class="line">}</div>
-<div class="ttc" id="aatomic__wait_8h_html"><div class="ttname"><a href="atomic__wait_8h.html">atomic_wait.h</a></div></div>
-<div class="ttc" id="aatomic__wait_8h_html_a370c86afe635924299552864bedee925"><div class="ttname"><a href="atomic__wait_8h.html#a370c86afe635924299552864bedee925">atomic_notify_one</a></div><div class="ttdeci">#define atomic_notify_one(object)</div><div class="ttdoc">Wake at least one thread blocked on object.</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00231">atomic_wait.h:231</a></div></div>
-<div class="ttc" id="aatomic__wait_8h_html_a62e860802236b0b927555fb4ee3ced3c"><div class="ttname"><a href="atomic__wait_8h.html#a62e860802236b0b927555fb4ee3ced3c">atomic_wait</a></div><div class="ttdeci">#define atomic_wait(object, expected)</div><div class="ttdoc">Block the calling thread until *object equals expected.</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00211">atomic_wait.h:211</a></div></div>
+<div class="ttc" id="aatomic__wait_8h_html"><div class="ttname"><a href="atomic__wait_8h.html">atomic_wait.h</a></div><div class="ttdoc">Proposed WG14 atomic wait/notify support (C11 / C++11 and later).</div></div>
+<div class="ttc" id="aatomic__wait_8h_html_acc56d5bc0452d1f7047d20fe192beae4"><div class="ttname"><a href="atomic__wait_8h.html#acc56d5bc0452d1f7047d20fe192beae4">atomic_notify</a></div><div class="ttdeci">#define atomic_notify(object, expected, desired, max_threads_to_wake, success, failure)</div><div class="ttdoc">Atomically compare-exchange and notify up to max_threads_to_wake waiters.</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00376">atomic_wait.h:376</a></div></div>
+<div class="ttc" id="aatomic__wait_8h_html_ad973556345025dd5aba57bac4f52b0e9"><div class="ttname"><a href="atomic__wait_8h.html#ad973556345025dd5aba57bac4f52b0e9">atomic_wait_expected</a></div><div class="ttdeci">#define atomic_wait_expected(object, expected, duration, success, failure)</div><div class="ttdoc">Wait up to duration for *object to no longer equal *expected.</div><div class="ttdef"><b>Definition</b> <a href="atomic__wait_8h_source.html#l00348">atomic_wait.h:348</a></div></div>
 <div class="ttc" id="aconfig_8h_html_a1516b2ba7caf9cdbad11b2c1f104eb2d"><div class="ttname"><a href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX</a></div><div class="ttdeci">#define WG14_ATOMIC_WAITS_PREFIX(x)</div><div class="ttdef"><b>Definition</b> <a href="config_8h_source.html#l00026">config.h:26</a></div></div>
-</div><!-- fragment --><p>Without <span class="tt"><a class="el" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX(...)</a></span>, you can simply include <span class="tt">&lt;<a class="el" href="atomic__wait_8h.html">wg14_atomic_waits/atomic_wait.h</a>&gt;</span> directly if not including <span class="tt">&lt;stdatomic.h&gt;</span> from C23.</p>
+</div><!-- fragment --><p>Without <span class="tt"><a class="el" href="config_8h.html#a1516b2ba7caf9cdbad11b2c1f104eb2d">WG14_ATOMIC_WAITS_PREFIX(...)</a></span>, you can simply include <span class="tt">&lt;<a class="el" href="atomic__wait_8h.html" title="Proposed WG14 atomic wait/notify support (C11 / C++11 and later).">wg14_atomic_waits/atomic_wait.h</a>&gt;</span> directly if not including <span class="tt">&lt;stdatomic.h&gt;</span> from C23.</p>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
+Building and using</h1>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
+Header-only</h2>
+<p>To use the library without compiling anything, add <span class="tt">include/</span> to your include path and define <span class="tt"><a class="el" href="config_8h.html#a4334631ad88f0ac2a01d916f1e674a58">WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY</a></span> before including <span class="tt">&lt;<a class="el" href="atomic__wait_8h.html" title="Proposed WG14 atomic wait/notify support (C11 / C++11 and later).">wg14_atomic_waits/atomic_wait.h</a>&gt;</span>. The header then pulls in the platform-specific implementation itself and works from both C11 and C++11 translation units:</p>
+<div class="fragment"><div class="line"><span class="preprocessor">#define WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY 1</span></div>
+<div class="line"><span class="preprocessor">#include &lt;<a class="code" href="atomic__wait_8h.html">wg14_atomic_waits/atomic_wait.h</a>&gt;</span></div>
+</div><!-- fragment --><p>When using the CMake <span class="tt">-DHEADER_ONLY_BUILD=ON</span> build this macro is defined for you.</p>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
+CMake</h2>
+<p>As a subdirectory or via <span class="tt">FetchContent</span>:</p>
+<div class="fragment"><div class="line">add_subdirectory(wg14_atomic_waits)   # or FetchContent_Declare/Populate</div>
+<div class="line">target_link_libraries(myapp PRIVATE wg14_atomic_waits)</div>
+</div><!-- fragment --><p>Or install it and use the exported package target:</p>
+<div class="fragment"><div class="line">cmake -S . -B build</div>
+<div class="line">cmake --build build --parallel</div>
+<div class="line">cmake --install build</div>
+</div><!-- fragment --><div class="fragment"><div class="line">find_package(wg14_atomic_waits CONFIG REQUIRED)</div>
+<div class="line">target_link_libraries(myapp PRIVATE wg14_atomic_waits::wg14_atomic_waits)</div>
+</div><!-- fragment --><p>Relevant CMake options:</p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">Option  </th><th class="markdownTableHeadNone">Default  </th><th class="markdownTableHeadNone">Effect  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">BUILD_SHARED_LIBS</span>  </td><td class="markdownTableBodyNone"><span class="tt">OFF</span>  </td><td class="markdownTableBodyNone">Build a shared library instead of a static one.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">HEADER_ONLY_BUILD</span>  </td><td class="markdownTableBodyNone"><span class="tt">OFF</span>  </td><td class="markdownTableBodyNone">Header-only "unity" build; defines <span class="tt"><a class="el" href="config_8h.html#a4334631ad88f0ac2a01d916f1e674a58">WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY</a></span>.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">ALWAYS_USE_PTHREADS_BACKEND</span>  </td><td class="markdownTableBodyNone"><span class="tt">OFF</span>  </td><td class="markdownTableBodyNone">Force the portable pthreads backend on every platform.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">BUILD_TESTING</span>  </td><td class="markdownTableBodyNone"><span class="tt">ON</span>  </td><td class="markdownTableBodyNone">Build the test suite (only when this is the top-level project).  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">CMAKE_C_STANDARD</span>  </td><td class="markdownTableBodyNone"><span class="tt">11</span>  </td><td class="markdownTableBodyNone">C standard; C23 (<span class="tt">23</span>) is also supported.  </td></tr>
+</table>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
+Building and running the tests</h2>
+<div class="fragment"><div class="line">cmake -S . -B build</div>
+<div class="line">cmake --build build --parallel</div>
+<div class="line">cd build &amp;&amp; ctest --output-on-failure --timeout 300 -E benchmark</div>
+</div><!-- fragment --><p>The benchmark target is <span class="tt">EXCLUDE_FROM_ALL</span>; build and run it explicitly:</p>
+<div class="fragment"><div class="line">cmake --build build --target benchmark_atomic_wait_test</div>
+<div class="line">./build/bin/benchmark_atomic_wait_test</div>
+</div><!-- fragment --><h1 class="doxsection"><a class="anchor" id="autotoc_md6"></a>
+Backends and native widths</h1>
+<p>Which widths take the native fast path and which go through the per-process hash-table fallback:</p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">Platform  </th><th class="markdownTableHeadNone">Primitive  </th><th class="markdownTableHeadNone">Native widths  </th><th class="markdownTableHeadNone">Fallback widths  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">Windows (x64)  </td><td class="markdownTableBodyNone"><span class="tt">WaitOnAddress</span> / <span class="tt">WakeByAddress*</span>  </td><td class="markdownTableBodyNone">1, 2, 4, 8  </td><td class="markdownTableBodyNone">(8 on 32-bit Windows)  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">macOS / iOS  </td><td class="markdownTableBodyNone"><span class="tt">__ulock_wait</span> / <span class="tt">__ulock_wake</span>  </td><td class="markdownTableBodyNone">4, 8  </td><td class="markdownTableBodyNone">1, 2  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">Linux  </td><td class="markdownTableBodyNone"><span class="tt">SYS_futex</span>  </td><td class="markdownTableBodyNone">4  </td><td class="markdownTableBodyNone">1, 2, 8  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">FreeBSD  </td><td class="markdownTableBodyNone"><span class="tt">_umtx_op</span>  </td><td class="markdownTableBodyNone">4, 8  </td><td class="markdownTableBodyNone">1, 2  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">Other POSIX  </td><td class="markdownTableBodyNone"><span class="tt">pthread_cond_wait</span> / <span class="tt">pthread_cond_signal</span>  </td><td class="markdownTableBodyNone">—  </td><td class="markdownTableBodyNone">1, 2, 4, 8  </td></tr>
+</table>
+<p>Semantics notes:</p>
+<ul>
+<li><span class="tt"><a class="el" href="atomic__wait_8h.html#ad973556345025dd5aba57bac4f52b0e9" title="Wait up to duration for *object to no longer equal *expected.">atomic_wait_expected</a></span> and <span class="tt"><a class="el" href="atomic__wait_8h.html#acc56d5bc0452d1f7047d20fe192beae4" title="Atomically compare-exchange and notify up to max_threads_to_wake waiters.">atomic_notify</a></span> are defined for the native 4-byte <span class="tt"><a class="el" href="atomic__wait_8h.html#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a></span> type only.</li>
+<li><span class="tt">duration</span> is a relative remaining interval measured against a monotonic clock, or <span class="tt">NULL</span> for no timeout. macOS, Windows and pthreads consume it directly; Linux converts it to an absolute CLOCK_MONOTONIC deadline for <span class="tt">FUTEX_WAIT</span>; FreeBSD leaves the <span class="tt">UMTX_ABSTIME</span> flag clear so the kernel treats it as relative.</li>
+<li><span class="tt"><a class="el" href="atomic__wait_8h.html#af7a8f1ca57f51a69c072599e29139ea5" title="Wake all threads blocked on object.">atomic_notify_all</a></span> always wakes every parked waiter: Windows uses <span class="tt">WakeByAddressAll</span>, macOS uses the wake-all flag, Linux and FreeBSD clamp the wake count, pthreads broadcasts.</li>
+<li><span class="tt"><a class="el" href="atomic__wait_8h.html#acc56d5bc0452d1f7047d20fe192beae4" title="Atomically compare-exchange and notify up to max_threads_to_wake waiters.">atomic_notify</a></span> returns a positive value (on some platforms 1 plus the number of threads woken) on a successful exchange, <span class="tt">0</span> when the compare-exchange fails, and a negative <span class="tt">-errno</span> on error.</li>
+</ul>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md7"></a>
 Supported targets</h1>
 <p>This library should work well on any POSIX implementation, as well as Microsoft Windows. You will need a minimum of C 11 in your toolchain.</p>
 <p>Current CI test targets:</p>
@@ -168,14 +254,30 @@ Supported targets</h1>
 <li>clang</li>
 <li>MSVC</li>
 </ul>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
+<p>The <span class="tt">-DHEADER_ONLY_BUILD=ON</span> configuration is exercised separately in CI on all three runners, for both C11 and C23 (C17 on MSVC).</p>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md8"></a>
 Configuration</h1>
 <p>You can find a number of user definable macros to override in <span class="tt"><a class="el" href="config_8h.html">config.h</a></span>. They have sensible defaults on the major platforms and toolchains.</p>
 <p>The only one to be especially aware of is <span class="tt"><a class="el" href="config_8h.html#a4334631ad88f0ac2a01d916f1e674a58">WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY</a></span>. When set to <span class="tt">1</span>, the library operates as header-only by including the platform-specific implementation directly within the header.</p>
-<h1 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
+<h1 class="doxsection"><a class="anchor" id="autotoc_md9"></a>
 Performance</h1>
-<p>On Linux with <span class="tt">SYS_futex</span> for native-width 4-byte types and the hash table fallback for other widths, <span class="tt"><a class="el" href="atomic__wait_8h.html#a62e860802236b0b927555fb4ee3ced3c" title="Block the calling thread until *object equals expected.">atomic_wait()</a></span> is only moderately more expensive than a futex on the same architecture. </p>
-</div></div><!-- PageDoc -->
+<p>On Linux with <span class="tt">SYS_futex</span> for native-width 4-byte types and the hash table fallback for other widths, <span class="tt"><a class="el" href="atomic__wait_8h.html#a62e860802236b0b927555fb4ee3ced3c" title="Block the calling thread until *object equals expected.">atomic_wait()</a></span> is only moderately more expensive than a futex on the same architecture. The same holds for the native 4/8-byte paths on macOS and FreeBSD and for all widths on Windows; the hash-table fallback widths (1/2/8-byte on Linux, 1/2-byte on macOS/FreeBSD, all widths on the pthreads backend) additionally pay a hash-table lookup and a per-process proxy object on top of the underlying wait primitive.</p>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md10"></a>
+Empirical results</h2>
+<p>All figures come from <span class="tt">benchmark_atomic_wait_test</span> (see "Reproduce" below): a ping-pong suspend-wake benchmark in which one producer and one consumer exchange a shared counter. The consumer parks in <span class="tt"><a class="el" href="atomic__wait_8h.html#a62e860802236b0b927555fb4ee3ced3c" title="Block the calling thread until *object equals expected.">atomic_wait</a></span> (a genuine kernel suspend), the producer waits for the park signal, settles briefly so the park has reached the kernel, then stores a new value and notifies. The reported figure is the mean suspend-wake latency — the time from the producer's notify timestamp to the consumer's return from <span class="tt"><a class="el" href="atomic__wait_8h.html#a62e860802236b0b927555fb4ee3ced3c" title="Block the calling thread until *object equals expected.">atomic_wait</a></span>, which excludes the settle — over 10 runs.</p>
+<p>The two measured paths are the 4-byte native fast path and the 1-byte width, which on the POSIX backends is served by the hash-table fallback (see "Backends and native widths"). On Windows every width is native (<span class="tt">WaitOnAddress</span>), so its fallback column measures the native 1-byte path instead.</p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">Machine  </th><th class="markdownTableHeadNone">OS  </th><th class="markdownTableHeadNone">Toolchain  </th><th class="markdownTableHeadNone">Native fast path (4-byte)  </th><th class="markdownTableHeadNone">Hash-table fallback (1-byte)  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">Apple M3 Pro (12 cores, 18 GB)  </td><td class="markdownTableBodyNone">macOS 15.7.7 (Darwin 24.6.0, arm64)  </td><td class="markdownTableBodyNone">Apple clang 17.0.0, <span class="tt">Release</span> (<span class="tt">-O2</span>)  </td><td class="markdownTableBodyNone">1.47 µs  </td><td class="markdownTableBodyNone">1.74 µs  </td></tr>
+</table>
+<p>On the POSIX backends the hash-table fallback is consistently slower than the native fast path (here 1.62–1.82 µs vs 1.40–1.49 µs across the 10 runs), reflecting the per-cycle hash-table lookup and proxy management on top of the same kernel suspend-wake primitive.</p>
+<p>Reproduce with:</p>
+<div class="fragment"><div class="line">cmake -S . -B build -DCMAKE_BUILD_TYPE=Release</div>
+<div class="line">cmake --build build --target benchmark_atomic_wait_test --parallel</div>
+<div class="line">./build/bin/benchmark_atomic_wait_test</div>
+</div><!-- fragment --> </div></div><!-- PageDoc -->
 <a href="doxygen_crawl.html"></a>
 </div><!-- contents -->
 </div><!-- doc-content -->
