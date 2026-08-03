@@ -48,8 +48,8 @@ extern "C"
                             (int) expected, abs_timeout, NULL, 0);
     if(ret == 0)
     {
-        errno = save_errno;
-        return 0;
+      errno = save_errno;
+      return 0;
     }
     int e = errno;
     errno = save_errno;
@@ -66,13 +66,22 @@ extern "C"
   unsigned max_threads_to_wake)
   {
     int save_errno = errno;
+    // FUTEX_WAKE takes a signed int count. Callers pass (unsigned)-1 to mean
+    // "wake all"; passed through unclamped that becomes -1, and the kernel's
+    // futex_wake() wake loop breaks after waking just one waiter
+    // (if (++ret >= nr_wake) break), so atomic_notify_all would leave every
+    // other parked waiter asleep forever. Clamp to INT_MAX so that wake-all
+    // really wakes every waiter parked on the futex.
+    const int nr_wake = (max_threads_to_wake > (unsigned) INT_MAX) ?
+                        INT_MAX :
+                        (int) max_threads_to_wake;
     long ret = syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAKE,
-                       (int) max_threads_to_wake, NULL, NULL, 0);
+                       nr_wake, NULL, NULL, 0);
     if(ret < 0)
     {
-        int e = errno;
-        errno = save_errno;
-        return -e;
+      int e = errno;
+      errno = save_errno;
+      return -e;
     }
     errno = save_errno;
     return (int) ret;

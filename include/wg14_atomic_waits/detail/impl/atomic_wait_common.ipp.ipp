@@ -78,25 +78,31 @@ extern "C"
     WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_flag lock;
   } WG14_ATOMIC_WAITS_PREFIX(hash_table_t);
 
-  // There must be exactly one of these in the whole process
-  WG14_ATOMIC_WAITS_EXTERN_IMPL
-  WG14_ATOMIC_WAITS_DEFAULT_VISIBILITY
-  WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *
-  WG14_ATOMIC_WAITS_PREFIX(hash_table)(void);
-
-  // In header-only mode the header is included from more than one translation
-  // unit, so every TU would otherwise emit its own strong definition and the
-  // linker would reject them as a duplicate symbol. Mark the singleton weak
-  // (GCC/Clang) / selectany (MSVC) so the multiple identical definitions are
-  // coalesced into one, keeping a single process-wide proxy table shared across
-  // TUs (a wait in one TU must find a notify's proxy in another).
-  WG14_ATOMIC_WAITS_IGNORE_MULTIPLE_DEFINITIONS
-  WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *
-  WG14_ATOMIC_WAITS_PREFIX(hash_table)(void)
-  {
-    static WG14_ATOMIC_WAITS_PREFIX(hash_table_t) table;
-    return &table;
+  // The single process-wide proxy table, declared extern here and defined
+  // below. In the compiled-library build the definition lives only in the
+  // library TU; in the header-only build every TU that includes the header
+  // emits its own identical definition, so the definition is marked
+  // WG14_ATOMIC_WAITS_IGNORE_MULTIPLE_DEFINITIONS and the linker coalesces the
+  // copies into one shared instance (a wait in one TU must find a notify's
+  // proxy in another). The attribute is applied to a data item, not a function,
+  // because MSVC's __declspec(selectany) only accepts data items with external
+  // linkage. The table is zero-initialised, which is all it needs: the
+  // atomic_flag lock starts clear and the buckets are allocated lazily on first
+  // use.
+  extern WG14_ATOMIC_WAITS_PREFIX(hash_table_t)
+  WG14_ATOMIC_WAITS_PREFIX(shared_global_hash_table);
+#ifdef __cplusplus
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ZERO_INIT                                 \
+  {                                                                            \
   }
+#else
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ZERO_INIT {0}
+#endif
+  WG14_ATOMIC_WAITS_IGNORE_MULTIPLE_DEFINITIONS
+  WG14_ATOMIC_WAITS_PREFIX(hash_table_t)
+  WG14_ATOMIC_WAITS_PREFIX(shared_global_hash_table) =
+  WG14_ATOMIC_WAITS_HASH_TABLE_ZERO_INIT;
+#undef WG14_ATOMIC_WAITS_HASH_TABLE_ZERO_INIT
 
   static WG14_ATOMIC_WAITS_INLINE void
   WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(hash_table_t *table)
@@ -387,7 +393,7 @@ extern "C"
       }
     }
     WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
-    WG14_ATOMIC_WAITS_PREFIX(hash_table)();
+    &WG14_ATOMIC_WAITS_PREFIX(shared_global_hash_table);
     WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order order = failure;
     WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *item = WG14_ATOMIC_WAITS_NULLPTR;
     bool lock_is_held = false;
@@ -485,7 +491,7 @@ extern "C"
                                                   unsigned max_threads_to_wake)
   {
     WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
-    WG14_ATOMIC_WAITS_PREFIX(hash_table)();
+    &WG14_ATOMIC_WAITS_PREFIX(shared_global_hash_table);
     WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
     WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *const item =
     WG14_ATOMIC_WAITS_PREFIX(hash_table_find_or_create)(table, object, false);

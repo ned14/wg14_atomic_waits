@@ -62,3 +62,30 @@ the native 4-byte fast path, since the lost-wake interleaving differs per path.
 Add a 4-byte (`atomic_uint_native_wait_notify_t`) variant of the same
 notify-before-park → store → notify_all cycle.
 
+### B6. RESOLVED — Linux futex wake-all only woke one waiter (fixed 2026-08-03)
+
+`atomic_wait_widths_test` and `atomic_notify_more_test` timed out on the Linux
+futex backend. Root cause: `wake_by_address32` in `atomic_wait_linux.c.ipp`
+passed `(int) max_threads_to_wake` straight into `FUTEX_WAKE`. The wake-all
+call sites (`atomic_notify_all_4` and the hash-proxy wake-all) pass
+`(unsigned)-1`, which becomes `-1`, and the kernel's `futex_wake()` loop
+(`if (++ret >= nr_wake) break`) breaks after waking exactly **one** waiter.
+With multiple parked waiters (2-byte/8-byte roundtrips on Linux use the hash
+path; cap/concurrent notify tests park 6 on the native 4-byte path), all but one
+waiter stayed parked forever and `thrd_join` hung.
+
+Fixed by clamping the unsigned count to `INT_MAX` before the syscall
+(`max_threads_to_wake > INT_MAX ? INT_MAX : (int) max_threads_to_wake`), so
+wake-all performs `FUTEX_WAKE(INT_MAX)`, matching how libstdc++/Boost wake-all.
+Note: the macOS (WAKE_ALL), Windows (WakeByAddressAll) and pthreads (broadcast)
+backends already special-cased the wake-all count; only the Linux futex pass-through
+was broken.
+
+Unrelated, still-open Linux observation (not the reported hang): `wait_on_address32`
+passes the *relative* `ts_remaining` from `atomic_wait_expected_32`/`atomic_wait_generic`
+straight to `FUTEX_WAIT`, which expects an **absolute** CLOCK_MONOTONIC deadline
+(FreeBSD's backend likewise treats it as absolute), so timed waits busy-spin until
+their deadline instead of sleeping. This does not affect the non-timed
+wait/notify tests; fixing it requires standardising the timeout contract across
+the backends.
+
