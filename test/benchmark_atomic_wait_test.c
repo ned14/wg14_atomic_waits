@@ -17,11 +17,11 @@
 // shared counter: the consumer parks in atomic_wait (a genuine kernel suspend
 // on both the native fast path and the hash-table fallback -- on the fallback
 // the single consumer's proxy is removed and recreated between cycles, so its
-// wake flag is re-armed and the park really suspends). The producer waits for
-// the consumer to signal it is about to park, settles briefly so the park has
-// reached the kernel (otherwise the store lands before the park syscall and
-// the wait returns immediately without suspending), then stores a new value
-// and notifies.
+// proxy generation starts fresh and the park really suspends). The producer
+// waits for the consumer to signal it is about to park, settles briefly so the
+// park has reached the kernel (otherwise the store lands before the park
+// syscall and the wait returns immediately without suspending), then stores a
+// new value and notifies.
 //
 // Two numbers are reported per path:
 //  - the mean suspend-wake latency, timed on the consumer from the producer's

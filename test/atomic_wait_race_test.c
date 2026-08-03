@@ -13,12 +13,6 @@
 // atomic_uint_least8_t) through a wait -> spurious-notify (value still equal)
 // -> re-park cycle on a single object, and asserts the waiter actually suspends
 // while re-parked rather than busy-spinning at ~100% CPU.
-//
-// NOTE: against the current (unfixed) implementation this test FAILS, because
-// the default hash-table proxy flag is set to 1 on notify and never re-armed,
-// so the re-park hits an already-1 flag and the waiter spins. It is
-// intentionally kept to document/lock in the defect. It is bounded (never
-// hangs).
 
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t g_value = 0;
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int g_parked = 0;
@@ -114,17 +108,10 @@ int atomic_wait_race_test_main(void)
   if(g_cpu_burned > 0.1)
   {
     fprintf(stderr,
-            "PRIMARY RACE detected: waiter busy-spun %g s CPU in a 300 ms "
+            "FATAL: waiter busy-spun %g s CPU in a 300 ms "
             "window instead of suspending\n",
             g_cpu_burned);
-    // The library is intentionally left unchanged (see
-    // plans/combined-analysis.md §1.1): the default hash-table proxy flag is
-    // never re-armed, so the re-park busy-spins instead of suspending. Rather
-    // than fail CI on a known, documented defect, report the CTest
-    // SKIP_RETURN_CODE (77): the test still runs and prints the diagnostic,
-    // CTest records it as skipped, and it automatically flips to a pass once
-    // the proxy flag is re-armed (i.e. the library is fixed).
-    return 77;
+    return ret + 1;
   }
   return ret;
 }

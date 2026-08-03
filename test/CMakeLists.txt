@@ -11,12 +11,6 @@ add_code_test(atomic_notify_more_test SOURCES
               "atomic_notify_more_test.c" FEATURES c_std_11)
 add_code_test(atomic_wait_race_test SOURCES
               "atomic_wait_race_test.c" FEATURES c_std_11)
-# The PRIMARY RACE it detects (hash-table proxy flag never re-armed, see
-# plans/combined-analysis.md 1.1) is a known, documented defect: the library is
-# intentionally left unchanged. The test returns 77 (CTest SKIP_RETURN_CODE) when
-# it detects the busy-spin so CI stays green while still printing the diagnostic;
-# it automatically flips to a pass once the library is fixed (proxy flag re-armed).
-set_tests_properties(atomic_wait_race_test PROPERTIES SKIP_RETURN_CODE 77)
 
 # Benchmark: built only on demand (EXCLUDE_FROM_ALL) and excluded from ctest
 # with -E benchmark so ordinary test runs stay fast and deterministic.

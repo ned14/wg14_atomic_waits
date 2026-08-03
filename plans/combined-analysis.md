@@ -8,40 +8,6 @@ The single source of truth is **`docs/proposal.md`** (proposed §7.17.7.7–7.17
 
 These are places where the implementation does not meet what the proposal requires.
 
-### 1.1 (Critical) Fallback proxy busy-spins instead of suspending
-
-**Proposal basis:** §7.17.7.7 (and §7.17.7.10) says the calling thread "is suspended until it
-is woken up … if when woken up the value still compares equal to `expected` the thread is
-suspended again." That is an explicit requirement to actually sleep, and to keep sleeping on
-re-park.
-
-**Implementation:** the default hash-table proxy in `atomic_wait_common.ipp.ipp` is a
-mono-directional `0 → 1` flag:
-```c
-..._WAIT:  wait_on_address32(&(x)->atomic, 0, ...)   /* park while proxy->atomic == 0 */
-..._WAKE:  atomic_store_explicit(&(x)->atomic, 1, release); wake_by_address32(...)
-```
-The flag is **never written back to `0` while the node lives** (it is reset only at node
-creation in `hash_table_find_or_create`). A waiter that must re-park (spurious wake, or a
-wake with the value still equal) parks on expected `0` while `proxy->atomic == 1`; the kernel
-returns `EAGAIN` immediately and the waiter **busy-spins at 100% CPU** instead of being
-"suspended again". A later `store + notify` then has no sleeping thread to wake, so the wake
-is lost and correctness depends on the spin-poll.
-
-Affects the hash-table fallback: Linux 1/2/8-byte; macOS/FreeBSD 1/2-byte. (The pthreads
-backend is fixed — it uses its own mutex/condvar/token proxy that does sleep correctly.)
-Files: `atomic_wait_common.ipp.ipp:41-49`, `:220-222`
-
-### 1.2 (Critical) Same defect viewed as a notify-before-park lost wake
-
-**Proposal basis:** §7.17.7.8 "If prior to the call a thread has been suspended … at least one
-such thread is woken up." The wording only guarantees wakening threads suspended *prior* to
-the notify, so a notify that lands before the waiter parks is not, on its own, a violation —
-but the combination with 1.1 turns it into a permanent busy-loop.
-
-**Implementation:** Thread A is preempted before `hash_table_find_or_create`; Thread B
-notifies (setting `proxy->atomic = 1`) with nobody parked; Thread A then parks on expected `0`
-but the flag is already `1` → the wait returns immediately and A loops forever.
 
 ### 1.3 (High) `memory_order` result not tied to suspension in `atomic_wait_expected`
 
@@ -63,10 +29,10 @@ either a notifying operation or by an atomic store or exchange."
 
 **Implementation:** on the hash-table fallback path the waiter parks on the *proxy* object,
 not the user's atomic. A plain `atomic_store` on the user object never signals the proxy, so a
-store alone cannot unblock a genuinely-sleeping fallback waiter; store-triggered wakeups are
-only observed via the busy-spin poll (which is the bug in 1.1). So the "wakeup triggered by a
-store" behaviour is effectively absent on this path. (Treating NOTE 1 as advisory softens this
-to an under-specification — see §2.)
+store alone cannot unblock a genuinely-sleeping fallback waiter; with the 1.1 fix there is no
+busy-spin poll to observe the store either. So the "wakeup triggered by a store" behaviour is
+effectively absent on this path. (Treating NOTE 1 as advisory softens this to an
+under-specification — see §2.)
 
 ---
 
@@ -135,16 +101,8 @@ only advisory):
 
 | Issue | Severity | Basis / Location |
 |-------|----------|------------------|
-| Fallback proxy flag stuck at `atomic=1` → busy-spin not suspension | **Critical** | proposal §7.17.7.7; `atomic_wait_common.ipp.ipp:41-49`, `:220-222` |
-| Lost-wake: notify before park (hash table) | **Critical** | §7.17.7.8 + 1.1; `atomic_wait_common.ipp.ipp:220-222`, `:41-45` |
 | `order=success` set unconditionally (failure-ordering deviation) | **High** | §7.17.7.10 Returns; `atomic_wait_common.ipp.ipp:453` |
 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |
 | CAS-success-with-no-waiters returns `1` | Low | §7.17.7.11 (under-specified) |
 | Header-only defs not `static inline` | Low | internal |
-| Regression test asserting hash-path waiter suspends (PRIMARY RACE) | — (test fails on current lib) | `test/atomic_wait_race_test.c` |
 
-The dominant defect remains **1.1**: the default hash-table proxy flag is never re-armed, so
-waiters busy-spin instead of suspending, which violates §7.17.7.7's suspension requirement and
-loses wakes — the exact race the earlier analyses identified. The library is intentionally left
-unchanged; the defect is now locked in by `test/atomic_wait_race_test.c`, which fails until the
-proxy flag is re-armed (reset to `0` on re-park).

@@ -38,13 +38,21 @@ limitations under the License.
   &(x)->atomic, 0, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release),      \
   0)
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_DESTROY(x) (0)
+// The proxy atomic is a monotonically increasing generation counter. A waiter
+// parks on the value it reads at park time, so a wake that preceded the park
+// (or a spurious wake) makes the re-park block on the current generation
+// instead of busy-spinning on a stale flag.
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(x, timeout)          \
-  WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(&(x)->atomic, 0, (timeout))
+  WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(                                 \
+  &(x)->atomic,                                                                \
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(                        \
+  &(x)->atomic, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_acquire),         \
+  (timeout))
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAKE(x,                   \
                                                           max_threads_to_wake) \
   (                                                                            \
-  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_store_explicit(                       \
-  &(x)->atomic, 1, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release),      \
+  WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_fetch_add_explicit(                   \
+  &(x)->atomic, 1, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_acq_rel),      \
   WG14_ATOMIC_WAITS_PREFIX(wake_by_address32)(&(x)->atomic,                    \
                                               (max_threads_to_wake)))
 #endif
