@@ -131,32 +131,6 @@ fallback waiter; with 1.1's re-check the store is not observed either. So the
 "wakeup triggered by a store" behaviour is effectively absent on this path.
 (Treating NOTE 1 as advisory softens this to an under-specification — see §2.)
 
-### 1.5 (Low) FreeBSD backend cannot build: `_umtx_op` called with four arguments against a five-parameter prototype
-
-**Proposal basis:** n/a (portability).
-
-**Implementation:** `<sys/umtx.h>` declares
-`int _umtx_op(void *obj, int op, long id, void *uaddr, void *uaddr2)` — five
-parameters. Every call site in `atomic_wait_freebsd.c.ipp` passes only four
-(`:62`, `:69`, `:98`, `:104`, `:133`, `:156`), which is a constraint violation
-(error) in C11 with the prototype in scope; additionally `(long) &umtx_time`
-passed where `void *uaddr` is expected trips `-Wint-conversion`, and the project
-builds with `-Wall -Wextra -Wpedantic -Werror` (`CMakeLists.txt:58`). There is no
-FreeBSD CI job (§3), so this has never been caught. A mock of the real
-declaration reproduces the "too few arguments" error under `-Werror`.
-
-### 1.6 (Low) FreeBSD wake path returns 0 on error, not `-errno`
-
-**Proposal basis:** §7.17.7.11 Returns: "If unsuccessful, this function returns
-a negative value."
-
-**Implementation:** `wake_by_address32/64` (`atomic_wait_freebsd.c.ipp:135-138`,
-`:158-161`) return **0** on `_umtx_op` failure, contradicting their own
-"Returns -errno if failed" comment and the other backends. The caller
-`atomic_notify_32` then reports `1 + 0 = 1` — a *positive* result — masking a
-genuine backend failure, in violation of the negative-return contract.
-(Also note the 8-byte `UMTX_OP_WAIT`/`UMTX_OP_WAKE` and the `UMTX_ABSTIME`
-relative-timeout reading are completely unverified — no FreeBSD CI.)
 
 ### 1.7 (Low) Native and generic paths disagree about which load's value is returned in `*expected`
 
@@ -270,13 +244,8 @@ proposal leaves behaviour open; the flag here is "document for the reader", not 
 ## 3. Build / CI coverage gaps
 
 These configurations are documented (or fall out of the code) but are not
-exercised by `.github/workflows/ci.yml`, which is exactly why §1.5/§1.6 survive:
+exercised by `.github/workflows/ci.yml`:
 
-- **FreeBSD** — the backend is never compiled or run by CI (the only runners are
-  Ubuntu, macOS, Windows). §1.5 (won't build with the real headers under
-  `-Werror`) and §1.6 (error-masking return) are therefore unverified; the 8-byte
-  `UMTX_OP_WAIT` path and the "kernel treats the timeout as relative" assumption
-  (`atomic_wait_freebsd.c.ipp:55-61`) have never been exercised.
 - **`ALWAYS_USE_PTHREADS_BACKEND=ON` on Windows/MSVC** — the CMake source/link
   condition picks `atomic_wait_pthreads.c` and links `pthread`
   (`CMakeLists.txt:30,34`), but MSVC has neither `<pthread.h>` nor a `pthread`
@@ -329,11 +298,9 @@ triggerable by a portable unit test):
 | 1.2 | Pthreads: spurious `atomic_notify_all` busy-spins through `INT_MAX` pending tokens (tens of s–minutes/core) **[verified]** | High | §7.17.7.7 re-suspend; `atomic_wait_pthreads.c.ipp:213-215,136-141` |
 | 1.3 | Fallback: timed-out/errored `atomic_wait_expected` leaks proxy nodes (~227 B/call) **[verified]** | Medium | `atomic_wait_common.ipp.ipp:466-470,485-490` |
 | 1.4 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |
-| 1.5 | FreeBSD `_umtx_op` 4-arg calls → does not build with real headers under `-Werror` | Low | `atomic_wait_freebsd.c.ipp:62-156` |
-| 1.6 | FreeBSD wake returns 0 on error instead of `-errno` (notify reports false success) | Low | §7.17.7.11 Returns; `atomic_wait_freebsd.c.ipp:135-138` |
 | 1.7 | Native vs generic `*expected` returned from different loads (success>failure) | Low | §7.17.7.10 Returns; `atomic_wait_common.ipp.ipp:697-715` vs `:418-428` |
 | 1.8 | `success > failure` numeric enum comparison is non-portable | Low | `atomic_wait_common.ipp.ipp:418,702` |
 | 1.9 | `monotonic_now` ignores `clock_gettime` failure where `CLOCK_MONOTONIC` missing | Low | `atomic_wait_common.ipp.ipp:379` |
 | 1.10 | `atomic_notify` max=0 returns 0 without performing the exchange | Low | §7.17.7.11; `atomic_wait_common.ipp.ipp:764-767` |
 | 1.11 | Quadratic probing reaches half the table; grow can silently drop items | Low | `atomic_wait_common.ipp.ipp:177-187,221` |
-| §3 | FreeBSD / pthreads-on-Windows / Win32-x86 never CI-tested | Medium (risk) | `.github/workflows/ci.yml` |
+| §3 | pthreads-on-Windows / Win32-x86 never CI-tested | Medium (risk) | `.github/workflows/ci.yml` |

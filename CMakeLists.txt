@@ -106,6 +106,10 @@ if(PROJECT_IS_TOP_LEVEL AND (NOT DEFINED BUILD_TESTING OR BUILD_TESTING))
     target_compile_features(${target} PRIVATE ${ADD_EXAMPLE_FEATURES})
     wg14_atomic_waits_enable_c11_atomics(${target})
     target_link_libraries(${target} PRIVATE ${PROJECT_NAME})
+    # FreeBSD keeps its C11 <threads.h> implementation (thrd_*, mtx_*, ...) in
+    # a separate base library, libstdthreads, rather than in libc or libpthread,
+    # so executables using the C11 threads API must link it explicitly.
+    target_link_libraries(${target} PRIVATE $<$<PLATFORM_ID:FreeBSD>:stdthreads>)
     set_target_properties(${target} PROPERTIES
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
       ${ADD_EXAMPLE_PROPERTIES}

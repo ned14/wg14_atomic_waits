@@ -466,7 +466,7 @@ extern "C"
         if(now.tv_sec > end.tv_sec ||
            (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
         {
-          errno = ETIME;
+          errno = ETIMEDOUT;
           return 0;
         }
         ts_remaining.tv_sec = end.tv_sec - now.tv_sec;
@@ -482,8 +482,7 @@ extern "C"
       item, (duration != WG14_ATOMIC_WAITS_NULLPTR) ?
             &ts_remaining :
             WG14_ATOMIC_WAITS_NULLPTR);
-      if(ret2 < 0 && ret2 != -EAGAIN && ret2 != -EINTR && ret2 != -ETIME &&
-         ret2 != -ETIMEDOUT)
+      if(ret2 < 0 && ret2 != -EAGAIN && ret2 != -EINTR && ret2 != -ETIMEDOUT)
       {
         errno = -ret2;
         return -1;
@@ -706,10 +705,10 @@ extern "C"
           // final value with it. Unnecessary when the failure ordering already
           // provides at least as much load-ordering as the success ordering.
           //
-	  // We do NOT overwrite *expected here, as the value loaded into current
-	  // may have changed since the previous atomic load and this atomic load
-	  // and then we would be returning not the value which caused the wait
-	  // to exit, which would break our API contract.
+          // We do NOT overwrite *expected here, as the value loaded into
+          // current may have changed since the previous atomic load and this
+          // atomic load and then we would be returning not the value which
+          // caused the wait to exit, which would break our API contract.
           WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, success);
         }
         return ret;
@@ -724,7 +723,7 @@ extern "C"
         if(now.tv_sec > end.tv_sec ||
            (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
         {
-          errno = ETIME;
+          errno = ETIMEDOUT;
           return 0;
         }
         ts_remaining.tv_sec = end.tv_sec - now.tv_sec;
@@ -740,8 +739,7 @@ extern "C"
       object, *expected,
       (duration != WG14_ATOMIC_WAITS_NULLPTR) ? &ts_remaining :
                                                 WG14_ATOMIC_WAITS_NULLPTR);
-      if(ret2 < 0 && ret2 != -EAGAIN && ret2 != -EINTR && ret2 != -ETIME &&
-         ret2 != -ETIMEDOUT)
+      if(ret2 < 0 && ret2 != -EAGAIN && ret2 != -EINTR && ret2 != -ETIMEDOUT)
       {
         errno = -ret2;
         return -1;

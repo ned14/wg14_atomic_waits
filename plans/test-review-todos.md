@@ -137,55 +137,6 @@ no hash table, so it leaks nothing.
   ~260 B/addr leaky total; ASan redzones inflate the leak signal, improving the
   margin. If the fix lands, re-run to confirm ≈32 B/addr.
 
-### A1.5 (item 1.5) FreeBSD backend must compile (stub-header compile test)
-
-**Verdict:** testable on every CI OS — no FreeBSD runner needed.
-
-**Test:** `test/compile_freebsd_backend.c` + `test/stubs/sys/umtx.h` +
-a CMake `add_code_test` entry compiling the test TU with:
-
-```
--D__FreeBSD__=1 -D__FreeBSD_version=1400000 -I test/stubs
-```
-
-plus the project's standard `-Wall -Wextra -Wpedantic -Werror`
-(`compile_freebsd_backend.c` contains
-`#define WG14_ATOMIC_WAITS_SOURCE 1` and
-`#include <wg14_atomic_waits/detail/impl/atomic_wait_freebsd.c.ipp>`, empty `main`).
-
-- `test/stubs/sys/umtx.h` mirrors the real FreeBSD header's contract:
-  `struct _umtx_time { int _clockid; unsigned _flags; struct timespec _timeout; };`
-  plus `UMTX_OP_WAIT`, `UMTX_OP_WAIT_UINT`, `UMTX_OP_WAKE`, `UMTX_OP_WAKE_UINT`,
-  and — crucially — the real five-parameter prototype
-  `int _umtx_op(void *obj, int op, long id, void *uaddr, void *uaddr2);`.
-- Expected status on today's code: **fails to compile** ("too few arguments to
-  `_umtx_op`"; `(long) &umtx_time` trips `-Wint-conversion`) — reproduced with a
-  mock. Passes once the six call sites (`atomic_wait_freebsd.c.ipp:62,69,98,104,133,156`)
-  pass five arguments.
-- Caveats: defining `__FreeBSD__` on non-FreeBSD hosts could affect some system
-  headers; verify the test builds clean on Ubuntu/macOS/Windows before
-  committing. This test also acts as the §3 CI-coverage mitigation for FreeBSD.
-
-### A1.6 (item 1.6) FreeBSD wake must return `-errno` on failure (white-box mock)
-
-**Verdict:** testable on any OS once A1.5 compiles.
-
-**Test:** `test/freebsd_wake_error_test.c` — same stub machinery as A1.5, but the
-TU additionally **defines** `_umtx_op` (matching the stub's prototype) so the
-backend's static helpers call it:
-
-- Mock returns `-1`/`errno = EINVAL` for `UMTX_OP_WAKE_UINT`/`UMTX_OP_WAKE` (the
-  wake ops) and returns 0 for the wait ops (so wait tests pass).
-- Include the FreeBSD `.ipp`, then call the backend's own helpers directly:
-  - `WG14_ATOMIC_WAITS_PREFIX(wake_by_address32)(&obj, 1)` → assert `== -EINVAL`
-    (documented contract, `atomic_wait_freebsd.c.ipp:117-121`);
-  - `wake_by_address64` likewise;
-  - `wait_on_address32` with a mock returning `-1`/`errno = ETIMEDOUT` → assert
-    `== -ETIMEDOUT`; with mock returning 0 → assert `== 0`.
-- Expected status on today's code: **fails** (wake helpers return 0 on error,
-  `:135-138`/`:158-161`, so the first two assertions fail); passes after the fix.
-- Note: this is the only test in the set that pins a backend's internal error
-  contract; it is a white-box test by design.
 
 ### A1.10 (item 1.10) `atomic_notify` with `max_threads_to_wake == 0`
 
@@ -268,36 +219,6 @@ add both variants.
 
 ## E. §3 CI coverage gaps — CI changes, not unit tests
 
-- **FreeBSD never tested.** Cheapest fix: the A1.5 stub compile test runs on the
-  existing Ubuntu/macOS/Windows runners and catches the build break; a real
-  FreeBSD runner additionally exercises runtime behaviour (§1.6, the
-  `UMTX_ABSTIME` relative-timeout reading, 8-byte `UMTX_OP_WAIT`). Options, best
-  to worst:
-
-  1. **`vmactions/freebsd-vm@v1` inside this workflow** (recommended for
-     runtime): a real FreeBSD kernel under QEMU on `runs-on: ubuntu-latest`,
-     workspace synced, steps run in the VM via `prepare:`/`run:` (`usesh: true`).
-     Ships FreeBSD 12.4–15.1, x86_64 + aarch64; default 15.1 x86_64
-     (`release: "15"` tracks the newest 15.x). Use `cache-after-prepare: true`
-     so `pkg install -y cmake ninja` runs once; clang ships in the base system.
-     Keep the matrix small (e.g. Release, C11, native + pthreads) — each leg
-     pays a ~1–2 min VM boot. Use the existing `sanitize-toolchain.cmake`
-     (FreeBSD clang has ASan/UBSan; skip TSan, it is flaky there). FreeBSD 13+
-     has libthr in libc, so the CMake `-lpthread` is harmless, and
-     `<threads.h>` exists since 12 (real `thrd_*` API in the tests).
-  2. **Cirrus CI** (`.cirrus.yml`, free native FreeBSD 14 VMs, x86_64 + arm64,
-     posts GitHub check runs): best value for a full matrix, but a second CI
-     service. Sourcehut `builds.sr.ht` is a similar native option.
-  3. **Compile-only cross-build** in the existing matrix (catches §1.5 only):
-     `zig cc -target x86_64-freebsd` (ships FreeBSD libc headers) or clang
-     `--target=x86_64-unknown-freebsd13` with a sysroot; qemu-user cannot run
-     FreeBSD binaries on Linux, so this never executes the tests.
-  4. **Hand-rolled QEMU-system / self-hosted FreeBSD runner**: duplicates the
-     VM wrapping or needs an unofficial runner build; not recommended.
-
-  Suggested sequence: land the A1.5 stub test now (zero infra), then one
-  `vmactions/freebsd-vm` job after the backend compiles, then Cirrus only if a
-  full matrix is wanted.
 - **`ALWAYS_USE_PTHREADS_BACKEND` on Windows/MSVC.** Cannot build (no
   `<pthread.h>`, no `pthread` lib). Options: (a) add a CI leg using the existing
   `cmake/toolchain-windows-mingw.cmake` with winpthreads; (b) document the option
@@ -342,8 +263,6 @@ negative-`duration` *leak* is the new A1.3 test — these are separate behaviour
 
 1. **A1.2** and **A1.3** — no library changes; immediately turn CI red on the
    pthreads backend legs, confirming the two High/Medium bugs.
-2. **A1.5** then **A1.6** — expose the FreeBSD build break and the error-contract
-   bug; fix the backend, then both go green.
 3. **A1.1 hook + Test B** — the one-line guarded hook in
    `atomic_wait_common.ipp.ipp`; deterministic lost-wake exposure.
 4. **A1.10** — wait for the WG14 wording decision before committing either variant.

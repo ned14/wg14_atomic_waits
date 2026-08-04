@@ -162,6 +162,9 @@ Current CI test targets:
   native and pthreads backends, all under AddressSanitizer + UBSan.
 - Microsoft Windows, x64 (MSVC VS2022): Debug and Release, C11 and C17, static
   and shared, under AddressSanitizer.
+- FreeBSD, x64: FreeBSD 15 clang (real FreeBSD VM on an Ubuntu runner via
+  `vmactions/freebsd-vm`), Release, C11 and C23, native and pthreads backends,
+  under AddressSanitizer + UBSan.
 - Header-only (`-DHEADER_ONLY_BUILD=ON`): all three runners, C11 and C23
   (C17 on MSVC).
 - ThreadSanitizer: Ubuntu (GCC and clang) and Mac OS (clang), C11 and C23.
