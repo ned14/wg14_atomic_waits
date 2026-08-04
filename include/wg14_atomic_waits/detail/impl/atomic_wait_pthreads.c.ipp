@@ -197,10 +197,13 @@ extern "C"
   }
 
   // Wakes up to `max_threads_to_wake` parked threads on this proxy.
-  // Returns a positive count on success, or a negative error on failure.
+  // `registered` is the number of threads registered on the proxy under the
+  // hash-table lock: parked waiters plus those that re-checked the object
+  // value under the hash-table lock and are still racing the park. Returns a
+  // positive count on success, or a negative error on failure.
   static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(
   pthread_proxy_wake)(WG14_ATOMIC_WAITS_PREFIX(wg14_pthreads_proxy_t) * p,
-                      unsigned max_threads_to_wake)
+                      unsigned max_threads_to_wake, int registered)
   {
     int save_errno = errno;
     int ret = pthread_mutex_lock(&p->mutex);
@@ -209,13 +212,18 @@ extern "C"
       errno = save_errno;
       return -ret;
     }
-    // Bound the pending-token pile to one token per parked waiter (and one for
-    // a waiter that races the park). A waiter woken by a spurious notify (value
-    // unchanged) re-parks, consumes the next pending token and returns
-    // immediately, so an unbounded pile (INT_MAX on a wake-all) busy-spins a
-    // core until every token is drained instead of re-suspending. Every token
-    // is consumed by a real wake; once the pile is empty the re-park blocks.
-    const long cap = (p->waiting > 0) ? (long) p->waiting : 1L;
+    // Bound the pending-token pile to one token per *registered* waiter, not
+    // per parked waiter. A waiter that re-checked the value under the
+    // hash-table lock but has not yet parked is not counted in `waiting`, yet
+    // it consumes a token on park entry — and parks for good if none is left,
+    // a lost wake when the value has already changed. Covering every
+    // registered waiter lets the wake reach those still racing the park. A
+    // waiter woken by a spurious notify (value unchanged) re-parks, consumes
+    // the next pending token and returns immediately, so an unbounded pile
+    // (INT_MAX on a wake-all) busy-spins a core until every token is drained
+    // instead of re-suspending. Every token is consumed by a real wake; once
+    // the pile is empty the re-park blocks.
+    const long cap = (registered > 0) ? (long) registered : 1L;
     if(max_threads_to_wake == (unsigned) -1)
     {
       p->pending = (int) cap;
@@ -268,8 +276,8 @@ extern "C"
   WG14_ATOMIC_WAITS_PREFIX(pthread_proxy_wait)(&(x)->atomic, (timeout)))
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAKE(x,                   \
                                                           max_threads_to_wake) \
-  WG14_ATOMIC_WAITS_PREFIX(pthread_proxy_wake)(&(x)->atomic,                   \
-                                               (max_threads_to_wake))
+  WG14_ATOMIC_WAITS_PREFIX(pthread_proxy_wake)(                                \
+  &(x)->atomic, (max_threads_to_wake), (x)->use_count)
 
 #define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32 0
 #define WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_64 0

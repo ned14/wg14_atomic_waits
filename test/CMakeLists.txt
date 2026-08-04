@@ -15,6 +15,16 @@ add_code_test(wait_expected_leak_test SOURCES
               "wait_expected_leak_test.c" FEATURES c_std_11)
 add_code_test(hash_table_whitebox_test SOURCES
               "hash_table_whitebox_test.c" FEATURES c_std_11)
+# POSIX-only white-box test of the pthreads backend's wake-token accounting
+# (the included backend .ipp has no meaning on Windows, which lacks
+# <pthread.h>). Threads::Threads supplies -pthread on Linux; macOS/FreeBSD
+# provide pthreads in the system C library.
+if(NOT WIN32)
+  add_code_test(pthreads_proxy_whitebox_test SOURCES
+                "pthreads_proxy_whitebox_test.c" FEATURES c_std_11)
+  find_package(Threads REQUIRED)
+  target_link_libraries(pthreads_proxy_whitebox_test PRIVATE Threads::Threads)
+endif()
 
 # Benchmark: built only on demand (EXCLUDE_FROM_ALL) and excluded from ctest
 # with -E benchmark so ordinary test runs stay fast and deterministic.

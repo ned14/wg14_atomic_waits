@@ -10,7 +10,7 @@ on:
 
 jobs:
   Linux:
-    name: Linux
+    name: Linux (${{ matrix.compiler }}, ${{ matrix.debug }}, C${{ matrix.standard }}, shared=${{ matrix.shared }}, pthreads=${{ matrix.pthreads }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -43,7 +43,7 @@ jobs:
       run: cd build && ctest --output-on-failure --timeout 300 -E benchmark
       
   MacOS:
-    name: Mac OS
+    name: Mac OS (${{ matrix.debug }}, C${{ matrix.standard }}, shared=${{ matrix.shared }}, pthreads=${{ matrix.pthreads }})
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -73,7 +73,7 @@ jobs:
       run: cd build && ctest --output-on-failure --timeout 300 -E benchmark
       
   Windows:
-    name: Windows VS2022
+    name: Windows VS2022 (${{ matrix.debug }}, C${{ matrix.standard }}, shared=${{ matrix.shared }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
