@@ -4,11 +4,17 @@
 // §1.3 (analysis): a timed-out / errored `atomic_wait_expected` on the
 // hash-table fallback path must release its proxy node. The regression is
 // observable through the public API: a notify on an address with no registered
-// proxy node wakes nobody, so it reports "1 + 0 woken" (returns 1) — or a
-// negative no-waiter error on a native backend whose kernel wake fails on an
-// unwaited address. A *retained* node instead makes the hash-table backend
-// fabricate a wake (returns 2 or more). So the discriminator is `ret >= 2`:
-// only a leaked node can produce it, and it works on every backend.
+// proxy node wakes nobody. How that surfaces in `atomic_notify`'s return
+// differs by backend — the hash-table backend reports "1 + 0 woken" (1), the
+// Linux futex backend reports the real woken count (1 + 0), a native backend
+// whose kernel wake fails on an unwaited address (macOS) reports a negative
+// no-waiter error, and a native backend whose kernel wake cannot report a
+// woken count (Windows, FreeBSD) fabricates "1 woken" (2). A *retained* node
+// instead makes the hash-table backend fabricate an extra wake. The
+// discriminator is therefore `nr > baseline`, where `baseline` is the return
+// of a notify on a never-waited control address: every leaked node makes a
+// waited-on address report exactly one more woken thread than the control, and
+// that comparison works on every backend.
 #define LEAK_N 20000
 
 int wait_expected_leak_test_main(void)
@@ -28,20 +34,28 @@ int wait_expected_leak_test_main(void)
     CHECK(r == 0);
     CHECK(expected == 0);
   }
-  // Every proxy node must have been released. A retained (leaked) node makes
-  // the hash-table backend report a fabricated wake (return >= 2).
+  // Baseline: a notify on an address that was never waited on. Its return
+  // captures the backend's convention for "no registered proxy node". Every
+  // proxy node must have been released, so notifying each waited-on address
+  // must report no more woken threads than this control. A retained (leaked)
+  // node makes the hash-table backend fabricate an extra wake (nr > baseline).
+  static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_native_wait_notify_t
+  control;
+  WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) base_expected = 0;
+  const int baseline = WG14_ATOMIC_WAITS_PREFIX(atomic_notify)(
+  &control, &base_expected, 1, 1, memory_order_seq_cst, memory_order_seq_cst);
   for(int i = 0; i < LEAK_N; i++)
   {
     WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) en = 0;
     const int nr = WG14_ATOMIC_WAITS_PREFIX(atomic_notify)(
     &objs[i], &en, 1, 1, memory_order_seq_cst, memory_order_seq_cst);
-    if(nr >= 2)
+    if(nr > baseline)
     {
       fprintf(stderr,
               "FATAL: timed-out wait leaked a proxy node: atomic_notify on "
               "address %d returned %d after a timed-out wait (a leaked node "
-              "fabricates a wake; expected <= 1)\n",
-              i, nr);
+              "fabricates a wake; baseline %d)\n",
+              i, nr, baseline);
       return ret + 1;
     }
   }
