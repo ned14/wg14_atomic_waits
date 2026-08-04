@@ -32,7 +32,6 @@ limitations under the License.
 #include "../../atomic_wait.h"
 
 #include <errno.h>
-#include <limits.h>
 #include <pthread.h>
 #include <time.h>
 
@@ -210,14 +209,21 @@ extern "C"
       errno = save_errno;
       return -ret;
     }
+    // Bound the pending-token pile to one token per parked waiter (and one for
+    // a waiter that races the park). A waiter woken by a spurious notify (value
+    // unchanged) re-parks, consumes the next pending token and returns
+    // immediately, so an unbounded pile (INT_MAX on a wake-all) busy-spins a
+    // core until every token is drained instead of re-suspending. Every token
+    // is consumed by a real wake; once the pile is empty the re-park blocks.
+    const long cap = (p->waiting > 0) ? (long) p->waiting : 1L;
     if(max_threads_to_wake == (unsigned) -1)
     {
-      p->pending = INT_MAX;
+      p->pending = (int) cap;
     }
     else
     {
       const long np = (long) p->pending + (long) max_threads_to_wake;
-      p->pending = (np > INT_MAX) ? INT_MAX : (int) np;
+      p->pending = (int) ((np > cap) ? cap : np);
     }
     ret = (max_threads_to_wake == 1) ? pthread_cond_signal(&p->cond) :
                                        pthread_cond_broadcast(&p->cond);

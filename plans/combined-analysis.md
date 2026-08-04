@@ -20,33 +20,6 @@ Findings below are categorised as:
 ## 1. Deviations from the proposal
 
 
-### 1.2 (High) Pthreads backend: spurious `atomic_notify_all` busy-spins through `INT_MAX` pending tokens instead of re-suspending **[verified]**
-
-**Proposal basis:** §7.17.7.7 "if when woken up the value still compares equal to
-`expected` the thread is suspended again" — the re-suspension must actually
-suspend, not burn CPU.
-
-**Implementation:** `pthread_proxy_wake` (`atomic_wait_pthreads.c.ipp:213-215`)
-sets `p->pending = INT_MAX` for a wake-all (`max_threads_to_wake == -1`).
-`pthread_proxy_wait` (`atomic_wait_pthreads.c.ipp:136-141`) consumes a token and
-returns *immediately* whenever `pending > 0`. A waiter woken by a spurious
-`atomic_notify_all` (value unchanged) therefore re-checks, re-parks, consumes the
-next token, … — a tight spin of up to 2³¹-1 iterations (measured ~50 M token
-consumptions/s, i.e. tens of seconds to a couple of minutes of one core) before
-it ever blocks again. It makes progress and will exit the moment the value
-changes, so it is a livelock/perf bug, not a hang, but a single spurious
-`atomic_notify_all` pegs a core for a long time.
-
-Reproduced on the forced-pthreads macOS build: a parked 8-bit waiter given one
-spurious `atomic_notify_all` with the value unchanged burned **0.302 s CPU in a
-300 ms window** (~100 % of a core). The same probe against the native build
-burned 0.000 s (the generation-counter proxy bumps by one per notify and the
-waiter re-parks on the new generation — bounded).
-
-The unbounded `pending` pile is unique to the pthreads proxy: the default proxy
-bumps a monotonic counter (bounded), and single-token notifies are bounded. Only
-the `INT_MAX` wake-all token dump is pathological. Cap `pending` at the number of
-waiters (or use a generation counter like the default proxy).
 
 ### 1.3 (Medium) Hash-table fallback: timed-out / errored `atomic_wait_expected` leaks its proxy node **[verified]**
 
@@ -190,7 +163,8 @@ proposal leaves behaviour open; the flag here is "document for the reader", not 
   uniformly across backends.
 - **`atomic_notify` return when the exchange succeeds but only a sub-range of waiters is
   woken.** On macOS/Windows/pthreads any `max_threads_to_wake > 1` degenerates to wake-all
-  (or `INT_MAX` tokens), and the returned "1 + woken" count is fabricated
+  (and the pthreads token pile is now capped at the waiter count, see §1.2), and the returned
+  "1 + woken" count is fabricated
   (`atomic_wait_macos.c.ipp:130`, `atomic_wait_windows.c.ipp:185`). "At least
   `max_threads_to_wake`" makes this compliant; the exact count is implementation-defined.
 
@@ -233,9 +207,10 @@ triggerable by a portable unit test):
   `atomic_wait_expected_test.c`) is only produced on a backend synchronization failure that a
   portable unit test cannot deterministically trigger.
 - **Newly identified, previously untested behaviours that §1 turned up:**
-  - §1.2: no test drives a *spurious* `atomic_notify_all` (value unchanged) on the pthreads
-    backend, which is the trigger for the `INT_MAX`-token busy-spin. `atomic_wait_race_test.c`
-    uses `atomic_notify_one` (bounded) on the fallback widths only.
+  - §1.2: now covered by `spurious_notify_all_busy_spin_test` in
+    `atomic_wait_race_test.c`, which drives a *spurious* `atomic_notify_all`
+    (value unchanged) on the pthreads backend and asserts the fallback waiter
+    re-suspends (bounded CPU burn).
   - §1.3: the timeout/error proxy leak is invisible to the suite (process exits); a long-running
     process doing many timed-out waits on distinct addresses on the pthreads backend grows
     memory without bound.
@@ -246,7 +221,6 @@ triggerable by a portable unit test):
 
 | # | Issue | Severity | Basis / Location |
 |---|-------|----------|------------------|
-| 1.2 | Pthreads: spurious `atomic_notify_all` busy-spins through `INT_MAX` pending tokens (tens of s–minutes/core) **[verified]** | High | §7.17.7.7 re-suspend; `atomic_wait_pthreads.c.ipp:213-215,136-141` |
 | 1.3 | Fallback: timed-out/errored `atomic_wait_expected` leaks proxy nodes (~227 B/call) **[verified]** | Medium | `atomic_wait_common.ipp.ipp:466-470,485-490` |
 | 1.4 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |
 | 1.7 | Native vs generic `*expected` returned from different loads (success>failure) | Low | §7.17.7.10 Returns; `atomic_wait_common.ipp.ipp:697-715` vs `:418-428` |

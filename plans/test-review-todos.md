@@ -9,9 +9,6 @@ on today's code, caveats).
 Verdicts in the mapping table:
 
 | Item | Verdict | Test ref |
-|---|---|---|
-| 1.1 Fallback-path lost-wake deadlock | Testable **only with a test hook**; flaky without it | A1.1 |
-| 1.2 Pthreads `INT_MAX` busy-spin | **Testable, deterministic** (CPU measurement) | A1.2 |
 | 1.3 Proxy-node leak on timeout/error | **Testable, deterministic, fast** (negative-duration + RSS) | A1.3 |
 | 1.4 Store/exchange wakeups absent on fallback | Not testable portably (advisory; backend-dependent) | — |
 | 1.5 FreeBSD backend cannot build | **Testable** (stub-header compile test, runs on any OS) | A1.5 |
@@ -28,86 +25,6 @@ Verdicts in the mapping table:
 
 ## A. Deterministically testable — implement these
 
-### A1.1 (item 1.1) Lost-wake deadlock on the hash-table fallback path
-
-**Verdict:** a public-API test can only expose this probabilistically (the
-window is the ~10 ns between `hash_table_unlock` at
-`atomic_wait_common.ipp.ipp:457` and the proxy-generation load inside
-`PROXY_WAIT` at `:481`). A deterministic test requires a tiny test-only hook.
-
-**Test A — stress (no library change, flaky):** `test/lost_wake_stress2.c`
-
-- Uses an `atomic_uint_least8_t` (fallback width on every POSIX backend).
-- For K iterations (e.g. 200):
-  1. `value = 0`; spawn waiter that sets `parked = 1` then
-     `atomic_wait(&value, 0)`.
-  2. Main: `test_wait_until(parked)`; then **exactly one** `atomic_store(value, 1)`
-     and **exactly one** `atomic_notify_one(&value)` — no retry, no `notify_all`.
-  3. Bounded join: spin on a `returned` flag (set by the waiter after
-     `atomic_wait` returns) up to ~2 s. If it has not returned, record a failure,
-     then issue a `notify_all` **as cleanup** (so the process can exit and the
-     test reports a clean failure instead of hanging), then join.
-  4. `CHECK(waiter returned within the deadline)` — i.e. one store+notify pair
-     sufficed.
-- Control: repeat the same loop on an `atomic_uint_native_wait_notify_t`
-  (native 4-byte path) object — this must never fail.
-- Expected status: passes on the native control and on the pthreads backend;
-  occasionally fails on fallback widths (rare race, so the failure rate is low
-  and the test is flaky-to-pass). That flakiness is exactly why the hook-based
-  test below is preferred.
-
-**Test B — deterministic (requires a one-line test hook):**
-`test/lost_wake_hook_test.c` plus a guarded hook in
-`atomic_wait_common.ipp.ipp` between lines 457 and 481:
-
-```c
-#ifdef WG14_ATOMIC_WAITS_TEST_WIDEN_PARK_WINDOW
-  WG14_ATOMIC_WAITS_PREFIX(test_park_window_hook)();
-#endif
-```
-
-- Declare a weak no-op default so production builds are unaffected.
-- The test TU includes the backend `.ipp` directly (header-only include) with
-  `-DWG14_ATOMIC_WAITS_TEST_WIDEN_PARK_WINDOW` and defines the hook to:
-  1. `atomic_store(&in_window, 1)`; 2. spin until `atomic_load(&release) == 1`.
-- Main thread: wait for `in_window` (the waiter is now provably *between* its
-  locked re-check and its proxy-generation load), then perform **one**
-  store+notify, then set `release`, then bounded-join with the same 2 s deadline
-  and `notify_all` cleanup as in Test A.
-- With the hook holding the window open, the notify's generation bump provably
-  lands before the waiter's generation load, so the current implementation parks
-  the waiter on the post-bump generation and it does **not** return until the
-  cleanup `notify_all` → the deadline `CHECK` fails 100 % of the time. After the
-  fix it returns immediately.
-- Gating: the hook test must only drive the **fallback** width; the native 4-byte
-  object is immune (futex word == object) and would falsely pass.
-- Note: this is the strongest exposure test in this set — add the hook.
-
-### A1.2 (item 1.2) Pthreads spurious `atomic_notify_all` busy-spin
-
-**Verdict:** testable deterministically; no library change needed.
-
-**Test:** `test/spurious_notify_all_spin_test.c`
-
-- An `atomic_uint_least8_t` `value`; waiter sets `parked = 1`, records its thread
-  CPU (`cpu_seconds()`, copy the Apple/Linux helper from
-  `atomic_wait_race_test.c:26-51`, returns −1 on unsupported platforms), then
-  `atomic_wait(&value, 0)`.
-- Main: `test_wait_until(parked)`, then for ≈250 ms repeatedly:
-  `thrd_sleep_ms(1); atomic_notify_all(&value);` with the value **unchanged**.
-  (The notify-all loop both guarantees the notify lands once the proxy exists and
-  defines the measurement window; the sleeps are not used for synchronisation.)
-- Release: `atomic_store(value, 1); atomic_notify_all(&value);` join.
-- Assertions:
-  - waiter `returned == 1`;
-  - if `cpu_seconds()` is supported: waiter CPU burned over the window
-    `< 0.05 s`.
-- Expected status on today's code: **fails** on the forced-pthreads build
-  (≈0.25 s CPU in the 250 ms window — measured 0.302 s in 300 ms); **passes** on
-  the native build (the generation-counter proxy gives ~one wake/re-park per
-  notify, ≈ms of CPU for 250 wakeups).
-- Caveats: the 0.05 s threshold separates the two cleanly (~0.25 s vs ~0.4 ms);
-  re-verify under ASan/TSan (both inflate spin CPU, keeping the separation).
 
 ### A1.3 (item 1.3) Proxy-node leak on timed-out / errored `atomic_wait_expected`
 
@@ -168,8 +85,6 @@ add both variants.
   no public-API test can force. A hook between the two loads (like A1.1's) could
   expose it, but the right fix is making the two paths agree; no test worth the
   hook.
-- **1.1 without the hook.** Stress test A1.1 above; low per-iteration hit rate,
-  so it is flaky-to-pass. Prefer the hook test.
 
 ---
 
@@ -261,9 +176,7 @@ negative-`duration` *leak* is the new A1.3 test — these are separate behaviour
 
 ## G. Implementation order
 
-1. **A1.2** and **A1.3** — no library changes; immediately turn CI red on the
-   pthreads backend legs, confirming the two High/Medium bugs.
-3. **A1.1 hook + Test B** — the one-line guarded hook in
-   `atomic_wait_common.ipp.ipp`; deterministic lost-wake exposure.
+2. **A1.3** — the remaining open leak bug; the test design below is ready to
+   implement and will turn CI red on the pthreads backend legs.
 4. **A1.10** — wait for the WG14 wording decision before committing either variant.
 5. **§3 CI legs** — pthreads-on-Windows, Win32-x86, header-only+pthreads.
