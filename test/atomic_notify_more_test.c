@@ -39,7 +39,11 @@ static int notify_success_test(void)
   CHECK(atomic_load_explicit(&value, memory_order_seq_cst) == 0);
 
   // Success: CAS 0->5 succeeds, wakes the parked waiter, returns positive, and
-  // the value becomes desired.
+  // the value becomes desired. Every backend returns a positive count on a
+  // successful exchange even when the notify lands before the waiter's first
+  // kernel park: Linux futex reports a real woken count of zero, macOS treats
+  // __ulock_wake's ENOENT as a spurious "nothing woken" outcome, and the
+  // other backends fabricate a positive count.
   ns_val = 0;
   ns_parked = 0;
   ns_returned = 0;

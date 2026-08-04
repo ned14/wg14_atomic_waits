@@ -123,11 +123,25 @@ extern "C"
   volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
   unsigned max_threads_to_wake)
   {
+    int save_errno = errno;
     const int ret = __ulock_wake(
     WG14_ATOMIC_WAITS_UL_COMPARE_AND_WAIT |
     ((max_threads_to_wake == 1) ? 0 : WG14_ATOMIC_WAITS_ULF_WAKE_ALL),
     (uint32_t *) (uintptr_t) object, 0);
-    return (ret != 0) ? ret : ((max_threads_to_wake == 1) ? 1 : (INT_MAX - 1));
+    if(ret != 0 && errno != ENOENT)
+    {
+      // Genuine wake failure: report it as -errno like the other backends.
+      const int e = errno;
+      errno = save_errno;
+      return -e;
+    }
+    // Success, or ENOENT because no thread is parked on the address — a normal
+    // "nothing to wake" outcome, the analogue of a futex wake reporting zero.
+    // Treat both as a successful wake so atomic_notify stays positive on a
+    // successful exchange, consistent with the Windows/FreeBSD backends, and
+    // restore errno so the suppressed ENOENT does not leak to the caller.
+    errno = save_errno;
+    return (max_threads_to_wake == 1) ? 1 : (INT_MAX - 1);
   }
 
 #define WG14_ATOMIC_WAITS_HAVE_WAKE_BY_ADDRESS_64 1
@@ -137,11 +151,22 @@ extern "C"
   volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
   unsigned max_threads_to_wake)
   {
+    int save_errno = errno;
     const int ret = __ulock_wake(
     WG14_ATOMIC_WAITS_UL_COMPARE_AND_WAIT64 |
     ((max_threads_to_wake == 1) ? 0 : WG14_ATOMIC_WAITS_ULF_WAKE_ALL),
     (uint64_t *) (uintptr_t) object, 0);
-    return (ret != 0) ? ret : ((max_threads_to_wake == 1) ? 1 : (INT_MAX - 1));
+    if(ret != 0 && errno != ENOENT)
+    {
+      // Genuine wake failure: report it as -errno like the other backends.
+      const int e = errno;
+      errno = save_errno;
+      return -e;
+    }
+    // ENOENT means no thread is parked on the address (see wake_by_address32);
+    // treat it as a successful wake with nothing woken, not an error.
+    errno = save_errno;
+    return (max_threads_to_wake == 1) ? 1 : (INT_MAX - 1);
   }
 
 #include "atomic_wait_common.ipp.ipp"

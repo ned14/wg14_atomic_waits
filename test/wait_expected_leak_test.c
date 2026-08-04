@@ -6,15 +6,15 @@
 // observable through the public API: a notify on an address with no registered
 // proxy node wakes nobody. How that surfaces in `atomic_notify`'s return
 // differs by backend — the hash-table backend reports "1 + 0 woken" (1), the
-// Linux futex backend reports the real woken count (1 + 0), a native backend
-// whose kernel wake fails on an unwaited address (macOS) reports a negative
-// no-waiter error, and a native backend whose kernel wake cannot report a
-// woken count (Windows, FreeBSD) fabricates "1 woken" (2). A *retained* node
-// instead makes the hash-table backend fabricate an extra wake. The
-// discriminator is therefore `nr > baseline`, where `baseline` is the return
-// of a notify on a never-waited control address: every leaked node makes a
-// waited-on address report exactly one more woken thread than the control, and
-// that comparison works on every backend.
+// Linux futex backend reports the real woken count (1 + 0), and a native
+// backend whose kernel wake cannot report a woken count (macOS treats
+// `__ulock_wake`'s ENOENT as a spurious "nothing woken"; Windows, FreeBSD)
+// fabricates "1 woken" (2). A *retained* node instead makes the hash-table
+// backend fabricate an extra wake. The discriminator is therefore
+// `nr > baseline`, where `baseline` is the return of a notify on a never-waited
+// control address: every leaked node makes a waited-on address report exactly
+// one more woken thread than the control, and that comparison works on every
+// backend.
 #define LEAK_N 20000
 
 int wait_expected_leak_test_main(void)
