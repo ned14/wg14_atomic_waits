@@ -119,8 +119,8 @@ ordering will be `failure`. Otherwise,
 if the calling thread was suspended at least once, returns a positive number and
 the memory synchronization ordering will be `success`. If unsuccessful, this function returns a negative value.
 
-In all cases, `*expected` on return was the value of `*object` when most
-recently loaded -- in the case of duration timeout, it will be the same as on entry.
+In all cases, `*expected` on return was the value of `*object` which caused
+the wait to exit -- in the case of duration timeout, it will be the same as on entry.
 
 ## 7.17.7.11 The `atomic_notify` generic functions
 

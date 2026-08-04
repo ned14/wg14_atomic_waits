@@ -12,8 +12,6 @@ Verdicts in the mapping table:
 | 1.4 Store/exchange wakeups absent on fallback | Not testable portably (advisory; backend-dependent) | — |
 | 1.5 FreeBSD backend cannot build | **Testable** (stub-header compile test, runs on any OS) | A1.5 |
 | 1.6 FreeBSD wake returns 0 on error | **Testable** (white-box mock of `_umtx_op`) | A1.6 |
-| 1.7 Native vs generic `*expected` divergence | Not testable (needs an intra-function race) | — |
-| 1.8 `success > failure` numeric enum compare | Not testable on supported toolchains | — |
 | 1.9 `monotonic_now` ignores `clock_gettime` failure | Not testable portably (fix first) | — |
 | 1.10 `atomic_notify(max=0)` no-op | **Testable**, but expectation encodes ambiguous wording | A1.10 |
 | 1.11 Quadratic probing / grow item drop | Not testable practically (internal; collisions) | — |
@@ -50,12 +48,6 @@ add both variants.
 
 ## B. Testable only with instrumentation / probabilistically
 
-- **1.7 (native vs generic `*expected`).** Both paths return different values
-  only when the object changes between the failure-ordered load and the
-  success-ordered reload *inside* `atomic_wait_expected` — an intra-function race
-  no public-API test can force. A hook between the two loads (like A1.1's) could
-  expose it, but the right fix is making the two paths agree; no test worth the
-  hook.
 
 ---
 
@@ -67,10 +59,6 @@ add both variants.
   imposes no "store must not wake" nor "store must wake" requirement. A portable
   positive or negative assertion is impossible. Existing B4 guidance below
   stands: make no store-wake assertion.
-- **1.8 `success > failure`.** The numeric `memory_order` encoding is identical
-  across clang/gcc/MSVC (relaxed=0 … seq_cst=5), so on every supported toolchain
-  the comparison is correct and no observable divergence exists to assert. A
-  portability hazard only; fix in code (order helper), no test.
 - **1.9 `monotonic_now` ignoring `clock_gettime` failure.** Requires a POSIX
   platform without `CLOCK_MONOTONIC`. A Linux `-Wl,--wrap=clock_gettime` trick
   could force the failure, but the code currently has *no defined* failure

@@ -36,35 +36,6 @@ fallback waiter; with 1.1's re-check the store is not observed either. So the
 (Treating NOTE 1 as advisory softens this to an under-specification — see §2.)
 
 
-### 1.7 (Low) Native and generic paths disagree about which load's value is returned in `*expected`
-
-**Proposal basis:** §7.17.7.10 Returns: "In all cases, `*expected` on return was
-the value of `*object` when most recently loaded."
-
-**Implementation:** when the wait exits with a positive (suspended) result and
-`success > failure`, the native path (`atomic_wait_common.ipp.ipp:697-715`)
-updates `*expected` from the *failure-ordered* load and **discards** the
-success-ordered reload (comment at `:709-713`), while the generic path
-(`:418-428`) copies the success-ordered load into `*expected`. In the narrow race
-where the object changes between the two loads, the two paths therefore return
-different values, and the native path returns a value that is *not* the most
-recently loaded. The native choice (return "the value which caused the wait to
-exit") is deliberate and defensible, but the two paths should agree; the proposal
-would benefit from stating which value is authoritative.
-
-### 1.8 (Low) `success > failure` relies on the numeric `memory_order` encoding
-
-**Proposal basis:** §7.17.7.10 requires the final load to use the success
-ordering "when the failure ordering already provides at least as much
-load-ordering" is *not* the case.
-
-**Implementation:** `atomic_wait_common.ipp.ipp:418` and `:702` compare the two
-order enums with `>`. The C standard does not fix the enum values; this only
-works because clang/gcc/MSVC all encode `relaxed < consume < acquire < release <
-acq_rel < seq_cst` as 0..5. Portable code should compare orderings explicitly
-(e.g. a small helper), and passing `release`/`acq_rel` as `success` (UB for a
-load anyway) would be mis-ordered by the numeric test in a C++ compile where
-`std::memory_order` could theoretically differ.
 
 ### 1.9 (Low) `monotonic_now` ignores `clock_gettime` failure on non-Windows platforms lacking `CLOCK_MONOTONIC`
 
@@ -198,8 +169,6 @@ triggerable by a portable unit test):
 | # | Issue | Severity | Basis / Location |
 |---|-------|----------|------------------|
 | 1.4 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |
-| 1.7 | Native vs generic `*expected` returned from different loads (success>failure) | Low | §7.17.7.10 Returns; `atomic_wait_common.ipp.ipp:697-715` vs `:418-428` |
-| 1.8 | `success > failure` numeric enum comparison is non-portable | Low | `atomic_wait_common.ipp.ipp:418,702` |
 | 1.9 | `monotonic_now` ignores `clock_gettime` failure where `CLOCK_MONOTONIC` missing | Low | `atomic_wait_common.ipp.ipp:379` |
 | 1.10 | `atomic_notify` max=0 returns 0 without performing the exchange | Low | §7.17.7.11; `atomic_wait_common.ipp.ipp:764-767` |
 | 1.11 | Quadratic probing reaches half the table; grow can silently drop items | Low | `atomic_wait_common.ipp.ipp:177-187,221` |

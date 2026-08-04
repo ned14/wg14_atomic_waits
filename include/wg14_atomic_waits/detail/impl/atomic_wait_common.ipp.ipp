@@ -65,6 +65,30 @@ extern "C"
 {
 #endif
 
+  // The `success > failure` comparisons below (in atomic_wait_generic and
+  // atomic_wait_expected_32) use the numeric memory_order encoding to decide
+  // whether the failure ordering already provides at least as much load
+  // ordering as the success ordering. C11 §7.17.3 mandates this exact
+  // enumerator order and every supported C++ stdlib follows it, but the C++
+  // standard leaves the enumerator values implementation-defined. Verify the
+  // encoding at compile time so a toolchain that reorders the enumerators
+  // fails the build loudly instead of silently mis-ordering the final load
+  // (analysis §1.8).
+  _WG14_ATOMIC_WAITS_STATIC_ASSERT(
+  ((WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_relaxed <
+    WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_consume) &&
+   (WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_consume <
+    WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_acquire) &&
+   (WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_acquire <
+    WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release) &&
+   (WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_release <
+    WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_acq_rel) &&
+   (WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_acq_rel <
+    WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst)),
+  "wg14_atomic_waits: memory_order values must increase numerically with "
+  "ordering strictness (relaxed < consume < acquire < release < acq_rel < "
+  "seq_cst) for the success > failure comparison to be valid");
+
   typedef struct
   {
     int use_count;
@@ -419,17 +443,23 @@ extern "C"
                                                     bytes, failure);
       if(memcmp(current.as_bytes, expected, bytes) != 0)
       {
+        // We have successfully been woken. *expected must be the value which
+        // caused the wait to exit (proposal §7.17.7.10 Returns): the value of
+        // this load that observed the change. Capture it before any
+        // success-ordered reload, whose value is deliberately discarded — the
+        // object may have changed again by then, and that newer value did not
+        // cause this wait to exit (analysis §1.7).
+        memcpy(expected, current.as_bytes, bytes);
         if(ret != 0 && success > failure)
         {
           // The load that observes the change and completes the wait must use
           // the success ordering (proposal §7.17.7.10 Returns), so reload the
-          // final value with it. Unnecessary when the failure ordering already
-          // provides at least as much load-ordering as the success ordering.
+          // final value with it for its ordering effect. Unnecessary when the
+          // failure ordering already provides at least as much load-ordering
+          // as the success ordering.
           WG14_ATOMIC_WAITS_PREFIX(atomic_load_generic)(current.as_bytes,
                                                         object, bytes, success);
         }
-        // We have successfully been woken
-        memcpy(expected, current.as_bytes, bytes);
         break;
       }
       if(item == WG14_ATOMIC_WAITS_NULLPTR)
@@ -449,14 +479,17 @@ extern "C"
                                                       bytes, failure);
         if(memcmp(current.as_bytes, expected, bytes) != 0)
         {
+          // We have successfully been woken. Probably delete my
+          // entry. *expected is the value which caused the wait to exit (the
+          // value of this load), captured before the success-ordered reload
+          // whose value is discarded — same as the loop-top exit above
+          // (analysis §1.7).
+          memcpy(expected, current.as_bytes, bytes);
           if(ret != 0 && success > failure)
           {
             WG14_ATOMIC_WAITS_PREFIX(atomic_load_generic)(
             current.as_bytes, object, bytes, success);
           }
-          // We have successfully been woken. Probably delete my
-          // entry.
-          memcpy(expected, current.as_bytes, bytes);
           lock_is_held = true;
           break;
         }
