@@ -496,7 +496,7 @@ extern "C"
                        WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order failure)
   {
     int ret = 0;
-    struct timespec end;
+    struct timespec end = {0, 0};
     if(duration != WG14_ATOMIC_WAITS_NULLPTR)
     {
       struct timespec now;
@@ -512,7 +512,7 @@ extern "C"
     WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
     &WG14_ATOMIC_WAITS_PREFIX(shared_global_hash_table);
     WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *item = WG14_ATOMIC_WAITS_NULLPTR;
-    atomic_uint_least32_t item_counter = 0;
+    WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t item_counter = 0;
     bool lock_is_held = false;
     for(;;)
     {
@@ -809,7 +809,7 @@ extern "C"
   {
 #if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32
     int ret = 0;
-    struct timespec end;
+    struct timespec end = {0, 0};
     if(duration != WG14_ATOMIC_WAITS_NULLPTR)
     {
       struct timespec now;
