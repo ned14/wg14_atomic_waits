@@ -19,54 +19,6 @@ Findings below are categorised as:
 
 ## 1. Deviations from the proposal
 
-### 1.1 (High) Lost-wake deadlock on the hash-table fallback path: a value-changing store + notify can be lost in the park window
-
-**Proposal basis:** §7.17.7.7 / §7.17.7.10 "suspended until it is woken up by a
-call to `atomic_notify*(object)`" and NOTE 1 ("a wakeup is possibly triggered by
-… an atomic store or exchange"). The proposal's whole point is that a
-store-then-notify pair is the standard, race-free wake pattern.
-
-**Implementation:** on the fallback path (Linux 1/2/8-byte, macOS/FreeBSD
-1/2-byte) the waiter parks on the **proxy generation counter**, not on the user's
-object. The notifier's store changes the object word (invisible to the proxy),
-and the notify bumps the proxy generation *once* and wakes anyone currently
-parked on the old generation. If the notify's generation bump lands **after** the
-waiter's value re-check (under the hash-table lock,
-`atomic_wait_common.ipp.ipp:441-457`) but **before** the waiter's proxy
-generation load (`atomic_wait_common.ipp.ipp:481-484`, `WAIT` macro
-`atomic_wait_common.ipp.ipp:45-50`), then:
-
-1. the store already changed the object value, but
-2. the futex re-check at `wait_on_address32` only compares the **proxy**
-   generation against the loaded value — they now match, so it parks (no
-   `EAGAIN`), and
-3. the notify's wake is exhausted (it fired before the park).
-
-The waiter is then parked forever despite the value having changed and a notify
-having fired. On the **native** paths this is impossible: the futex/ulock word
-*is* the object, so the kernel-side value re-check returns `EAGAIN` and the loop
-re-loads the object and returns. The **pthreads** proxy is also immune: park and
-wake are serialised on the proxy mutex with a pending-token handshake
-(`pthread_proxy_wait`/`pthread_proxy_wake`, `atomic_wait_pthreads.c.ipp:122-249`).
-
-So the three wait implementations disagree about a fundamental safety property:
-
-| Path | store+notify racing the park |
-|---|---|
-| Native (Linux/macOS/FreeBSD/Windows fast paths) | cannot be lost |
-| Pthreads proxy (pending-token mutex) | cannot be lost |
-| Futex/ulock proxy (generation counter) | **can be lost → deadlock** |
-
-The window is small (between the waiter's `hash_table_unlock` and its proxy
-generation load), which is why the test suite — whose notifiers always pair the
-notify with the park or use retry loops — never trips it, but under real load a
-single store+notify can wedge a fallback-width waiter permanently. §7.17.7.8's
-"threads suspended prior to the call" wording technically permits a lost
-notify-before-park, but this is not that case: the value *did* change, and every
-other backend observes it. Treating NOTE 1 as advisory softens this to
-under-specification (see §2), but the divergence between backends is real and
-worth closing (e.g. a bounded object-value re-check spin before parking, as
-libc++ does).
 
 ### 1.2 (High) Pthreads backend: spurious `atomic_notify_all` busy-spins through `INT_MAX` pending tokens instead of re-suspending **[verified]**
 
@@ -231,8 +183,11 @@ proposal leaves behaviour open; the flag here is "document for the reader", not 
   that loads `*object == expected`, is preempted while a value-unchanging notify fires, then
   parks, can block with no further notify. This is an inherent futex-style limitation and not a
   proposal violation, but the proposal could state the intended pairing of notify with a
-  value-changing store more explicitly. §1.1 is the *value-changing* analogue on the fallback
-  path, which the native paths do not share.
+  value-changing store more explicitly. §1.1 was the *value-changing* analogue on
+  the fallback path; it is now closed (the proxy generation is captured under the
+  hash-table lock before the re-check, see §1.1), so this inherent
+  notify-before-park limitation is the only lost-wake case left and it applies
+  uniformly across backends.
 - **`atomic_notify` return when the exchange succeeds but only a sub-range of waiters is
   woken.** On macOS/Windows/pthreads any `max_threads_to_wake > 1` degenerates to wake-all
   (or `INT_MAX` tokens), and the returned "1 + woken" count is fabricated
@@ -284,9 +239,6 @@ triggerable by a portable unit test):
   - §1.3: the timeout/error proxy leak is invisible to the suite (process exits); a long-running
     process doing many timed-out waits on distinct addresses on the pthreads backend grows
     memory without bound.
-  - §1.1: the store+notify-vs-park lost-wake race is not deterministically triggerable; every
-    suite notifier is paired with a park or uses retry loops, so the fallback paths never prove
-    the "store-then-notify cannot be lost" property the native paths guarantee.
 
 ---
 
@@ -294,7 +246,6 @@ triggerable by a portable unit test):
 
 | # | Issue | Severity | Basis / Location |
 |---|-------|----------|------------------|
-| 1.1 | Fallback path: store+notify can be lost in the park window → permanent block (native & pthreads paths are immune) | High | §7.17.7.7/§7.17.7.10; `atomic_wait_common.ipp.ipp:441-484` |
 | 1.2 | Pthreads: spurious `atomic_notify_all` busy-spins through `INT_MAX` pending tokens (tens of s–minutes/core) **[verified]** | High | §7.17.7.7 re-suspend; `atomic_wait_pthreads.c.ipp:213-215,136-141` |
 | 1.3 | Fallback: timed-out/errored `atomic_wait_expected` leaks proxy nodes (~227 B/call) **[verified]** | Medium | `atomic_wait_common.ipp.ipp:466-470,485-490` |
 | 1.4 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |

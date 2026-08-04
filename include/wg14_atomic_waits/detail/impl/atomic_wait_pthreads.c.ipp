@@ -255,8 +255,11 @@ extern "C"
   WG14_ATOMIC_WAITS_PREFIX(pthread_proxy_init)(&(x)->atomic)
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_DESTROY(x)                \
   WG14_ATOMIC_WAITS_PREFIX(pthread_proxy_destroy)(&(x)->atomic)
-#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(x, timeout)          \
-  WG14_ATOMIC_WAITS_PREFIX(pthread_proxy_wait)(&(x)->atomic, (timeout))
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT_GET_COUNTER(x) 0
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(x, counter, timeout) \
+  (                                                                            \
+  (void) (counter),                                                            \
+  WG14_ATOMIC_WAITS_PREFIX(pthread_proxy_wait)(&(x)->atomic, (timeout)))
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAKE(x,                   \
                                                           max_threads_to_wake) \
   WG14_ATOMIC_WAITS_PREFIX(pthread_proxy_wake)(&(x)->atomic,                   \

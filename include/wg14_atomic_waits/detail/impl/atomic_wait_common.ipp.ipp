@@ -39,15 +39,18 @@ limitations under the License.
   0)
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_DESTROY(x) (0)
 // The proxy atomic is a monotonically increasing generation counter. A waiter
-// parks on the value it reads at park time, so a wake that preceded the park
-// (or a spurious wake) makes the re-park block on the current generation
-// instead of busy-spinning on a stale flag.
-#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(x, timeout)          \
-  WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(                                 \
-  &(x)->atomic,                                                                \
+// parks on a generation captured before the park — on the first park, under the
+// hash-table lock and before the value re-check — so a notify whose bump lands
+// in the capture-to-park window fails the kernel-side compare with EAGAIN and
+// the loop re-checks the object value instead of parking with the wake lost.
+// A wake that preceded the park (or a spurious wake) likewise makes the re-park
+// block on the current generation instead of spinning on a stale flag.
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT_GET_COUNTER(x)       \
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(                        \
-  &(x)->atomic, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_acquire),         \
-  (timeout))
+  &(x)->atomic, WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_acquire)
+#define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(x, counter, timeout) \
+  WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(&(x)->atomic, (counter),         \
+                                              (timeout))
 #define WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAKE(x,                   \
                                                           max_threads_to_wake) \
   (                                                                            \
@@ -403,6 +406,7 @@ extern "C"
     WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
     &WG14_ATOMIC_WAITS_PREFIX(shared_global_hash_table);
     WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *item = WG14_ATOMIC_WAITS_NULLPTR;
+    atomic_uint_least32_t item_counter = 0;
     bool lock_is_held = false;
     for(;;)
     {
@@ -438,6 +442,8 @@ extern "C"
           WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
           return -1;
         }
+        item_counter =
+        WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT_GET_COUNTER(item);
         // Recheck our atomic now we are holding the lock
         WG14_ATOMIC_WAITS_PREFIX(atomic_load_generic)(current.as_bytes, object,
                                                       bytes, failure);
@@ -479,14 +485,16 @@ extern "C"
         }
       }
       const int ret2 = WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(
-      item, (duration != WG14_ATOMIC_WAITS_NULLPTR) ?
-            &ts_remaining :
-            WG14_ATOMIC_WAITS_NULLPTR);
+      item, item_counter,
+      (duration != WG14_ATOMIC_WAITS_NULLPTR) ? &ts_remaining :
+                                                WG14_ATOMIC_WAITS_NULLPTR);
       if(ret2 < 0 && ret2 != -EAGAIN && ret2 != -EINTR && ret2 != -ETIMEDOUT)
       {
         errno = -ret2;
         return -1;
       }
+      item_counter =
+      WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT_GET_COUNTER(item);
     }
     if(item != WG14_ATOMIC_WAITS_NULLPTR)
     {
