@@ -86,31 +86,42 @@ static int cap_test(void)
   // a parked waiter). With max_threads_to_wake = 1 exactly one of the parked
   // waiters observes the wake, never more.
   const unsigned k = 1;
-  cap_val = 0;
-  cap_parked = 0;
-  cap_woke = 0;
-  for(int i = 0; i < CAP_WAITERS; i++)
-  {
-    CHECK(thrd_create(&thrs[i], cap_waiter, NULL) == thrd_success);
-  }
-  test_wait_until("cap_parked", &cap_parked, CAP_WAITERS);
-
-  WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) expected = 0;
-  const WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) desired = 1;
-  int nr = atomic_notify(&cap_val, &expected, desired, k, memory_order_seq_cst,
-                         memory_order_seq_cst);
-  CHECK(nr > 0);
-  CHECK(atomic_load_explicit(&cap_val, memory_order_seq_cst) == desired);
-  thrd_sleep_ms(50);
-  CHECK(atomic_load_explicit(&cap_woke, memory_order_acquire) == 1);
-
-  // Release the remaining parked waiters so all threads exit cleanly.
-  WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all)(&cap_val);
+  // Each waiter increments cap_parked before it enters the wait, so the notify
+  // below can land in the window before a waiter's first value load; such a
+  // waiter returns on its own (it observes the CAS'd value) without ever
+  // parking, inflating cap_woke past 1. This is the same entry-window race as
+  // in atomic_wait_expected_test.c, so retry until no waiter is in that window
+  // and the cap is observed to hold.
+  int got_cap = 0;
   int wr;
-  for(int i = 0; i < CAP_WAITERS; i++)
+  for(int attempt = 0; !got_cap && attempt < 100; attempt++)
   {
-    thrd_join(thrs[i], &wr);
+    cap_val = 0;
+    cap_parked = 0;
+    cap_woke = 0;
+    for(int i = 0; i < CAP_WAITERS; i++)
+    {
+      CHECK(thrd_create(&thrs[i], cap_waiter, NULL) == thrd_success);
+    }
+    test_wait_until("cap_parked", &cap_parked, CAP_WAITERS);
+
+    WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) expected = 0;
+    const WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) desired = 1;
+    int nr = atomic_notify(&cap_val, &expected, desired, k,
+                           memory_order_seq_cst, memory_order_seq_cst);
+    CHECK(nr > 0);
+    CHECK(atomic_load_explicit(&cap_val, memory_order_seq_cst) == desired);
+    thrd_sleep_ms(50);
+    got_cap = atomic_load_explicit(&cap_woke, memory_order_acquire) == 1;
+
+    // Release the remaining parked waiters so all threads exit cleanly.
+    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_all)(&cap_val);
+    for(int i = 0; i < CAP_WAITERS; i++)
+    {
+      thrd_join(thrs[i], &wr);
+    }
   }
+  CHECK(got_cap);
   CHECK(atomic_load_explicit(&cap_woke, memory_order_acquire) == CAP_WAITERS);
   return ret;
 }

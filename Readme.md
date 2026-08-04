@@ -156,18 +156,24 @@ This library should work well on any POSIX implementation, as well as Microsoft 
 
 Current CI test targets:
 
-- Ubuntu Linux, x64.
-- Mac OS, AArch64.
-- Microsoft Windows, x64.
+- Ubuntu Linux, x64: GCC and clang, Debug and Release, C11 and C23, static and
+  shared, native and pthreads backends, all under AddressSanitizer + UBSan.
+- Mac OS, AArch64: clang, Debug and Release, C11 and C23, static and shared,
+  native and pthreads backends, all under AddressSanitizer + UBSan.
+- Microsoft Windows, x64 (MSVC VS2022): Debug and Release, C11 and C17, static
+  and shared, under AddressSanitizer.
+- Header-only (`-DHEADER_ONLY_BUILD=ON`): all three runners, C11 and C23
+  (C17 on MSVC).
+- ThreadSanitizer: Ubuntu (GCC and clang) and Mac OS (clang), C11 and C23.
+- Fil-C memory-safe compiler: Ubuntu, C11, native and pthreads backends, via
+  `cmake/filc-toolchain.cmake`.
 
 Current compilers:
 
 - GCC
 - clang
 - MSVC
-
-The `-DHEADER_ONLY_BUILD=ON` configuration is exercised separately in CI on
-all three runners, for both C11 and C23 (C17 on MSVC).
+- Fil-C (memory-safe clang derivative)
 
 ## Configuration
 

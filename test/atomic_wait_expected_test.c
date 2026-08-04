@@ -218,18 +218,29 @@ int atomic_wait_expected_test_main(void)
   // Positive return when the thread was actually suspended at least once, and
   // *expected reloaded to the notified object value after wake.
   SECTION("suspend once, value-changing notify");
-  g_parked = 0;
-  g_result = 0;
-  g_reloaded = 0;
-  atomic_store_explicit(&value, 0, memory_order_seq_cst);
-  thrd_t thr;
-  CHECK(thrd_create(&thr, waiter_suspend_once, &value) == thrd_success);
-  test_wait_until("g_parked", &g_parked, 1);
-  atomic_store_explicit(&value, 7, memory_order_seq_cst);
-  WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
+  // The waiter stores its parked flag before it enters the wait, so the
+  // store+notify below can land in the window before the waiter's first value
+  // load; the wait then returns immediately with 0 (no suspension, per the
+  // documented \retval contract) and *expected reloaded to the new value. That
+  // is a legitimate outcome, not a failure, so retry until the waiter really
+  // suspends and this section exercises the notified path.
   int wr;
-  CHECK(thrd_join(thr, &wr) == thrd_success);
-  CHECK(atomic_load_explicit(&g_result, memory_order_acquire) > 0);
+  int suspended = 0;
+  for(int attempt = 0; !suspended && attempt < 100; attempt++)
+  {
+    g_parked = 0;
+    g_result = 0;
+    g_reloaded = 0;
+    atomic_store_explicit(&value, 0, memory_order_seq_cst);
+    thrd_t thr;
+    CHECK(thrd_create(&thr, waiter_suspend_once, &value) == thrd_success);
+    test_wait_until("g_parked", &g_parked, 1);
+    atomic_store_explicit(&value, 7, memory_order_seq_cst);
+    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
+    CHECK(thrd_join(thr, &wr) == thrd_success);
+    suspended = atomic_load_explicit(&g_result, memory_order_acquire) > 0;
+  }
+  CHECK(suspended);
   CHECK(atomic_load_explicit(&g_reloaded, memory_order_acquire) == 7);
 
   // Spurious wake while parked (value unchanged): the caller must re-suspend
@@ -256,18 +267,27 @@ int atomic_wait_expected_test_main(void)
   // Woken before the duration elapses: must return promptly (not at timeout)
   // with a positive result and *expected reloaded.
   SECTION("woken before duration");
-  g_td_parked = 0;
-  g_td_result = 0;
-  g_td_reloaded = 0;
-  g_td_elapsed_ms = 0;
-  atomic_store_explicit(&value, 0, memory_order_seq_cst);
-  thrd_t td;
-  CHECK(thrd_create(&td, waiter_timed, &value) == thrd_success);
-  test_wait_until("g_td_parked", &g_td_parked, 1);
-  atomic_store_explicit(&value, 3, memory_order_seq_cst);
-  WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
-  CHECK(thrd_join(td, &wr) == thrd_success);
-  CHECK(atomic_load_explicit(&g_td_result, memory_order_acquire) > 0);
+  // Same entry-window race as the "suspend once" section above: g_td_parked is
+  // stored before the waiter enters the wait, so the store+notify can land
+  // before the waiter's first value load and the wait returns 0 (no suspension)
+  // with *expected reloaded. Retry until the waiter really suspends.
+  int td_suspended = 0;
+  for(int attempt = 0; !td_suspended && attempt < 100; attempt++)
+  {
+    g_td_parked = 0;
+    g_td_result = 0;
+    g_td_reloaded = 0;
+    g_td_elapsed_ms = 0;
+    atomic_store_explicit(&value, 0, memory_order_seq_cst);
+    thrd_t td;
+    CHECK(thrd_create(&td, waiter_timed, &value) == thrd_success);
+    test_wait_until("g_td_parked", &g_td_parked, 1);
+    atomic_store_explicit(&value, 3, memory_order_seq_cst);
+    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
+    CHECK(thrd_join(td, &wr) == thrd_success);
+    td_suspended = atomic_load_explicit(&g_td_result, memory_order_acquire) > 0;
+  }
+  CHECK(td_suspended);
   CHECK(atomic_load_explicit(&g_td_reloaded, memory_order_acquire) == 3);
   CHECK(atomic_load_explicit(&g_td_elapsed_ms, memory_order_acquire) < 3000L);
 
@@ -329,19 +349,26 @@ int atomic_wait_expected_test_main(void)
     CHECK(r == 0);
     CHECK(expected == 0);
 
-    g_o_parked = 0;
-    g_o_returned = 0;
-    g_o_result = 0;
-    g_o_reloaded = 0;
-    atomic_store_explicit(&value, 0, memory_order_seq_cst);
-    thrd_t ow;
-    CHECK(thrd_create(&ow, waiter_orders, &value) == thrd_success);
-    test_wait_until("g_o_parked", &g_o_parked, 1);
-    atomic_store_explicit(&value, 11, memory_order_seq_cst);
-    WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
-    CHECK(thrd_join(ow, &wr) == thrd_success);
+    // Same entry-window race as the "suspend once" section above: retry until
+    // the waiter really suspends.
+    int o_suspended = 0;
+    for(int attempt = 0; !o_suspended && attempt < 100; attempt++)
+    {
+      g_o_parked = 0;
+      g_o_returned = 0;
+      g_o_result = 0;
+      g_o_reloaded = 0;
+      atomic_store_explicit(&value, 0, memory_order_seq_cst);
+      thrd_t ow;
+      CHECK(thrd_create(&ow, waiter_orders, &value) == thrd_success);
+      test_wait_until("g_o_parked", &g_o_parked, 1);
+      atomic_store_explicit(&value, 11, memory_order_seq_cst);
+      WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
+      CHECK(thrd_join(ow, &wr) == thrd_success);
+      o_suspended = atomic_load_explicit(&g_o_result, memory_order_acquire) > 0;
+    }
+    CHECK(o_suspended);
     CHECK(atomic_load_explicit(&g_o_returned, memory_order_acquire) == 1);
-    CHECK(atomic_load_explicit(&g_o_result, memory_order_acquire) > 0);
     CHECK(atomic_load_explicit(&g_o_reloaded, memory_order_acquire) == 11);
   }
 
