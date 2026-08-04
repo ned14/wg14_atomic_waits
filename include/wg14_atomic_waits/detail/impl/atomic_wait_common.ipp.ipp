@@ -22,6 +22,7 @@ limitations under the License.
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -97,6 +98,13 @@ extern "C"
 
 #define WG14_ATOMIC_WAITS_HASH_BUCKETS_INITIAL 1024
 #define WG14_ATOMIC_WAITS_HASH_BUCKETS_MAX (1024 * 1024)
+// Tombstone key marking a bucket whose proxy was removed: open addressing
+// cannot simply clear the slot (that would strand later items on probe paths
+// that no longer reach them — analysis §1.11), so the removed slot stays
+// "occupied" for probing and is reused by the next insert. Real object
+// pointers are never (void *) 1, so it cannot collide with a live key.
+// Tombstones are cleared by the next hash_table_grow rehash.
+#define WG14_ATOMIC_WAITS_HASH_BUCKET_DELETED ((void *) 1)
 
 
   typedef struct
@@ -110,6 +118,8 @@ extern "C"
   {
     WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) * buckets;
     unsigned bucket_count;
+    unsigned
+    count;  // number of occupied buckets (drives the load-factor growth check)
     WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_flag lock;
   } WG14_ATOMIC_WAITS_PREFIX(hash_table_t);
 
@@ -195,22 +205,47 @@ extern "C"
     {
       WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *const old_bucket =
       &table->buckets[i];
-      if(old_bucket->key == WG14_ATOMIC_WAITS_NULLPTR)
+      if(old_bucket->key == WG14_ATOMIC_WAITS_NULLPTR ||
+         old_bucket->key == WG14_ATOMIC_WAITS_HASH_BUCKET_DELETED)
       {
         continue;
       }
       const unsigned h =
       WG14_ATOMIC_WAITS_PREFIX(hash_func)(old_bucket->key) & mask;
-      for(unsigned step = 0; step < new_count; step++)
+      // Triangular probing: the offsets are the triangular numbers
+      // n(n+1)/2, which permute all `new_count` slots of a power-of-two
+      // table, unlike quadratic probing which visits only half of them
+      // (analysis §1.11). Advancing `idx` by an incrementing `step` yields
+      // offsets 0, 1, 3, 6, 10, ...
+      bool placed = false;
+      unsigned idx = h;
+      unsigned step = 0;
+      for(;;)
       {
-        const unsigned idx = (h + step * step) & mask;
         WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *const new_bucket =
         &new_buckets[idx];
         if(new_bucket->key == WG14_ATOMIC_WAITS_NULLPTR)
         {
           *new_bucket = *old_bucket;
+          placed = true;
           break;
         }
+        step++;
+        if(step >= new_count)
+        {
+          break;
+        }
+        idx = (idx + step) & mask;
+      }
+      if(!placed)
+      {
+        // A rehash must never silently drop an item (its waiter's notify
+        // would be lost). The doubled table is at most half full, so this is
+        // unreachable in practice; fail the rehash loudly and keep the old
+        // table intact rather than lose data.
+        free(new_buckets);
+        errno = ENOMEM;
+        return -1;
       }
     }
     free(table->buckets);
@@ -241,18 +276,48 @@ extern "C"
     }
     for(;;)
     {
+      if(increment_use_count && table->count >= (table->bucket_count >> 2) * 3)
+      {
+        // Grow proactively at 3/4 load so insertions never degrade into
+        // full-table probes (analysis §1.11).
+        if(WG14_ATOMIC_WAITS_PREFIX(hash_table_grow)(table) != 0)
+        {
+          // out of memory or hit maximum size limit
+          return WG14_ATOMIC_WAITS_NULLPTR;
+        }
+        continue;
+      }
       const unsigned h =
       WG14_ATOMIC_WAITS_PREFIX(hash_func)(key) & (table->bucket_count - 1);
-      for(unsigned step = 0; step < table->bucket_count; step++)
+      // Triangular probing, as in hash_table_grow (analysis §1.11).
+      WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *deleted_bucket =
+      WG14_ATOMIC_WAITS_NULLPTR;
+      unsigned idx = h;
+      unsigned step = 0;
+      for(;;)
       {
-        const unsigned idx = (h + step * step) & (table->bucket_count - 1);
         WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *bucket = &table->buckets[idx];
+        if(bucket->key == key)
+        {
+          // found
+          if(increment_use_count)
+          {
+            bucket->proxy->use_count++;
+          }
+          return bucket->proxy;
+        }
         if(bucket->key == WG14_ATOMIC_WAITS_NULLPTR)
         {
           if(!increment_use_count)
           {
             // not found
             return WG14_ATOMIC_WAITS_NULLPTR;
+          }
+          // Reuse the earliest tombstone on the probe path (if any) so
+          // removed slots do not accumulate ahead of live ones.
+          if(deleted_bucket != WG14_ATOMIC_WAITS_NULLPTR)
+          {
+            bucket = deleted_bucket;
           }
           bucket->proxy = (WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *) calloc(
           1, sizeof(proxy_waiter_t));
@@ -273,17 +338,20 @@ extern "C"
           bucket->key = key;
           // found
           bucket->proxy->use_count = 1;
+          table->count++;
           return bucket->proxy;
         }
-        if(bucket->key == key)
+        if(bucket->key == WG14_ATOMIC_WAITS_HASH_BUCKET_DELETED &&
+           deleted_bucket == WG14_ATOMIC_WAITS_NULLPTR)
         {
-          // found
-          if(increment_use_count)
-          {
-            bucket->proxy->use_count++;
-          }
-          return bucket->proxy;
+          deleted_bucket = bucket;
         }
+        step++;
+        if(step >= table->bucket_count)
+        {
+          break;
+        }
+        idx = (idx + step) & (table->bucket_count - 1);
       }
       if(WG14_ATOMIC_WAITS_PREFIX(hash_table_grow)(table) != 0)
       {
@@ -305,9 +373,11 @@ extern "C"
     }
     const unsigned h =
     WG14_ATOMIC_WAITS_PREFIX(hash_func)(key) & (table->bucket_count - 1);
-    for(unsigned step = 0; step < table->bucket_count; step++)
+    // Triangular probing, as in hash_table_grow (analysis §1.11).
+    unsigned idx = h;
+    unsigned step = 0;
+    for(;;)
     {
-      const unsigned idx = (h + step * step) & (table->bucket_count - 1);
       WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *bucket = &table->buckets[idx];
       if(bucket->key == key)
       {
@@ -320,20 +390,21 @@ extern "C"
           abort();
         }
         free(bucket->proxy);
-        memset(bucket, 0, sizeof(*bucket));
-        for(step++; step < table->bucket_count; step++)
-        {
-          const unsigned idx2 = (h + step * step) & (table->bucket_count - 1);
-          WG14_ATOMIC_WAITS_PREFIX(hash_bucket_t) *next_bucket =
-          &table->buckets[idx2];
-          if(next_bucket->key != WG14_ATOMIC_WAITS_NULLPTR)
-          {
-            *bucket = *next_bucket;
-            bucket = next_bucket;
-          }
-        }
+        // Leave a tombstone rather than clearing the slot: open addressing
+        // cannot compact a removed slot without stranding later items on
+        // probe paths that no longer reach them (analysis §1.11). The next
+        // hash_table_grow rehash clears every tombstone.
+        bucket->key = WG14_ATOMIC_WAITS_HASH_BUCKET_DELETED;
+        bucket->proxy = WG14_ATOMIC_WAITS_NULLPTR;
+        table->count--;
         return;
       }
+      step++;
+      if(step >= table->bucket_count)
+      {
+        return;
+      }
+      idx = (idx + step) & (table->bucket_count - 1);
     }
   }
 
@@ -403,7 +474,18 @@ extern "C"
     ts->tv_nsec =
     (long) (((count.QuadPart % freq.QuadPart) * 1000000000L) / freq.QuadPart);
 #else
-  (void) clock_gettime(CLOCK_MONOTONIC, ts);
+  // CLOCK_MONOTONIC is POSIX.1-2001 and present on every supported platform.
+  // If it is declared but fails at runtime the platform is broken and every
+  // wait duration would be silently wrong, so fail loudly with a diagnostic
+  // instead (analysis §1.9).
+  if(clock_gettime(CLOCK_MONOTONIC, ts) != 0)
+  {
+    fprintf(stderr,
+            "wg14_atomic_waits: clock_gettime(CLOCK_MONOTONIC, &ts) failed: "
+            "%s\n",
+            strerror(errno));
+    abort();
+  }
 #endif
   }
 

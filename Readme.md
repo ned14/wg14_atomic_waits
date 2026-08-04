@@ -216,12 +216,17 @@ instead.
 
 | Machine | OS | Toolchain | Native fast path (4-byte) | Hash-table fallback (1-byte) |
 |---|---|---|---|---|
-| Apple M3 Pro (12 cores, 18 GB) | macOS 15.7.7 (Darwin 24.6.0, arm64) | Apple clang 17.0.0, `Release` (`-O2`) | 1.47 µs | 1.74 µs |
+| Apple M3 Pro (12 cores, 18 GB) | macOS 15.7.7 (Darwin 24.6.0, arm64) | Apple clang 17.0.0, `Release` (`-O2`) | 1.46 µs | 1.51 µs |
 
-On the POSIX backends the hash-table fallback is consistently slower than the
-native fast path (here 1.62–1.82 µs vs 1.40–1.49 µs across the 10 runs),
+On the POSIX backends the hash-table fallback is still consistently slower than
+the native fast path (here 1.48–1.54 µs vs 1.43–1.48 µs across the 10 runs),
 reflecting the per-cycle hash-table lookup and proxy management on top of the
-same kernel suspend-wake primitive.
+same kernel suspend-wake primitive. The gap has narrowed from ~0.27 µs to
+~0.05 µs versus the earlier figures: this benchmark's single consumer recreates
+and removes its proxy every cycle, and the hash-table rework (triangular
+probing, tombstone-based removal, and load-factor growth) replaced the previous
+O(bucket_count) backward-shift compaction on every removal with an O(1)
+tombstone.
 
 Reproduce with:
 

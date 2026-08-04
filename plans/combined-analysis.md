@@ -37,16 +37,6 @@ fallback waiter; with 1.1's re-check the store is not observed either. So the
 
 
 
-### 1.9 (Low) `monotonic_now` ignores `clock_gettime` failure on non-Windows platforms lacking `CLOCK_MONOTONIC`
-
-**Proposal basis:** timeout correctness.
-
-**Implementation:** `atomic_wait_common.ipp.ipp:379` calls
-`clock_gettime(CLOCK_MONOTONIC, ts)` and ignores the return value; on a POSIX
-platform without `CLOCK_MONOTONIC` the timespec is garbage and every timeout
-breaks. The pthreads backend correctly guards its own clock choice
-(`atomic_wait_pthreads.c.ipp:50-54`) but the common code does not. Academic on
-POSIX.1-2008 systems, but the backend already handles the case inconsistently.
 
 ### 1.10 (Low) `atomic_notify` with `max_threads_to_wake == 0` returns 0 without performing the exchange
 
@@ -62,18 +52,6 @@ literal reading would still exchange the value and return positive. Ambiguous
 wording, but the no-op behaviour is a defensible reading ("notified" implies
 waking someone) — flagging for the proposal to clarify.
 
-### 1.11 (Low) Quadratic probing on a power-of-two table only reaches half the slots; `hash_table_grow` silently drops items if a rehash probe fails
-
-**Proposal basis:** n/a (robustness).
-
-**Implementation:** `(h + step*step) & mask` (`atomic_wait_common.ipp.ipp:221`,
-`:179`) with a power-of-two table visits only slots ≡ h or h+1 (mod 4), i.e. half
-the table; growth therefore triggers at ~50 % load instead of ~90 % (correct, just
-memory-hungrier). In `hash_table_grow` (`:177-187`) the rehash loop has no
-"slot not found" fallback — if a full probe fails the item is silently dropped,
-which would strand a waiter's proxy and lose its notify. Unreachable in
-practice (growth is triggered well below saturation) but it is a silent-loss
-hazard with no diagnostic.
 
 ---
 
@@ -169,7 +147,5 @@ triggerable by a portable unit test):
 | # | Issue | Severity | Basis / Location |
 |---|-------|----------|------------------|
 | 1.4 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |
-| 1.9 | `monotonic_now` ignores `clock_gettime` failure where `CLOCK_MONOTONIC` missing | Low | `atomic_wait_common.ipp.ipp:379` |
 | 1.10 | `atomic_notify` max=0 returns 0 without performing the exchange | Low | §7.17.7.11; `atomic_wait_common.ipp.ipp:764-767` |
-| 1.11 | Quadratic probing reaches half the table; grow can silently drop items | Low | `atomic_wait_common.ipp.ipp:177-187,221` |
 | §3 | pthreads-on-Windows / Win32-x86 never CI-tested | Medium (risk) | `.github/workflows/ci.yml` |

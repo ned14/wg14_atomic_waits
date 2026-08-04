@@ -10,11 +10,7 @@ Verdicts in the mapping table:
 
 | Item | Verdict | Test ref |
 | 1.4 Store/exchange wakeups absent on fallback | Not testable portably (advisory; backend-dependent) | — |
-| 1.5 FreeBSD backend cannot build | **Testable** (stub-header compile test, runs on any OS) | A1.5 |
-| 1.6 FreeBSD wake returns 0 on error | **Testable** (white-box mock of `_umtx_op`) | A1.6 |
-| 1.9 `monotonic_now` ignores `clock_gettime` failure | Not testable portably (fix first) | — |
 | 1.10 `atomic_notify(max=0)` no-op | **Testable**, but expectation encodes ambiguous wording | A1.10 |
-| 1.11 Quadratic probing / grow item drop | Not testable practically (internal; collisions) | — |
 | §2 under-specified bullets | No exposure tests (characterization only) | D |
 | §3 CI gaps | Not unit tests — CI additions (one doubles as A1.5) | E |
 
@@ -59,16 +55,6 @@ add both variants.
   imposes no "store must not wake" nor "store must wake" requirement. A portable
   positive or negative assertion is impossible. Existing B4 guidance below
   stands: make no store-wake assertion.
-- **1.9 `monotonic_now` ignoring `clock_gettime` failure.** Requires a POSIX
-  platform without `CLOCK_MONOTONIC`. A Linux `-Wl,--wrap=clock_gettime` trick
-  could force the failure, but the code currently has *no defined* failure
-  behaviour to assert against. Fix the code first (propagate an error / fall
-  back), then add a test.
-- **1.11 Quadratic probing / `hash_table_grow` silent drop.** The 50%-reachable
-  probe sequence and the rehash drop are internal to the hash table and only
-  bite under pathological collisions, which cannot be forced portably (the FNV
-  hash keys on the low 32 bits of real pointers). Fix in code (fallback to a
-  second probe strategy / assert on failed rehash), no test.
 
 ---
 
