@@ -101,6 +101,47 @@ jobs:
       shell: bash
       run: cd build && ctest -C ${{ matrix.debug }} --output-on-failure --timeout 300 -E benchmark
 
+  FreeBSD:
+    name: FreeBSD (C${{ matrix.standard }}, pthreads=${{ matrix.pthreads }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - standard: 11
+          pthreads: OFF
+        - standard: 11
+          pthreads: ON
+        - standard: 23
+          pthreads: OFF
+        - standard: 23
+          pthreads: ON
+    env:
+      NAME: FreeBSD-C${{ matrix.standard }}-pthreads${{ matrix.pthreads }}
+    steps:
+    - uses: actions/checkout@v4
+
+    # Real FreeBSD kernel under QEMU on the standard Ubuntu runner (github's
+    # own runners are Ubuntu/macOS/Windows only). The workspace is synced into
+    # the VM and the prepare/run scripts execute inside it as root. clang ships
+    # in the FreeBSD base system (with ASan/UBSan runtimes), so only cmake is
+    # installed; cache-after-prepare reuses the prepared image on later runs so
+    # pkg install runs once. release "15" tracks the newest 15.x point release.
+    - name: FreeBSD VM
+      uses: vmactions/freebsd-vm@v1
+      with:
+        envs: 'NAME'
+        usesh: true
+        cache-after-prepare: true
+        prepare: |
+          pkg install -y cmake
+        run: |
+          set -e
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_STANDARD=${{ matrix.standard }} -DALWAYS_USE_PTHREADS_BACKEND=${{ matrix.pthreads }} -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
+          cmake --build . --parallel
+          ctest --output-on-failure --timeout 300 -E benchmark
+
   HeaderOnly:
     name: Header-only (${{ matrix.os }}, C${{ matrix.standard }})
     runs-on: ${{ matrix.os }}
