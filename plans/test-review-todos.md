@@ -9,7 +9,6 @@ on today's code, caveats).
 Verdicts in the mapping table:
 
 | Item | Verdict | Test ref |
-| 1.3 Proxy-node leak on timeout/error | **Testable, deterministic, fast** (negative-duration + RSS) | A1.3 |
 | 1.4 Store/exchange wakeups absent on fallback | Not testable portably (advisory; backend-dependent) | — |
 | 1.5 FreeBSD backend cannot build | **Testable** (stub-header compile test, runs on any OS) | A1.5 |
 | 1.6 FreeBSD wake returns 0 on error | **Testable** (white-box mock of `_umtx_op`) | A1.6 |
@@ -25,34 +24,6 @@ Verdicts in the mapping table:
 
 ## A. Deterministically testable — implement these
 
-
-### A1.3 (item 1.3) Proxy-node leak on timed-out / errored `atomic_wait_expected`
-
-**Verdict:** testable deterministically and *fast* — no sleeping required.
-
-**Key insight:** on the generic path a **negative** duration (`tv_sec = −1`) makes
-`atomic_wait_generic` create the proxy (`atomic_wait_common.ipp.ipp:434`) and then
-return immediately at the duration check (`:466-470`) with no decrement — one
-leaked node per call, each call effectively instant. The native 32-bit path has
-no hash table, so it leaks nothing.
-
-**Test:** `test/wait_expected_leak_test.c`
-
-- Allocate an array of N = 50,000 distinct `atomic_uint_least32_t` objects.
-- RSS helper with three platform implementations (return 0 / skip the assertion
-  if unavailable): macOS `mach_task_basic_info.resident_size`; Linux read
-  `/proc/self/statm`; Windows `GetProcessMemoryInfo`.
-- Loop: `struct timespec d = {.tv_sec = -1, .tv_nsec = 0};`
-  `atomic_wait_expected(&objs[i], &e, &d, seq_cst, seq_cst);` for each object.
-- Assert `(rss_after - rss_before) < 100 bytes × N` (< 5 MB for 50k).
-- Expected status on today's code: **fails** on the forced-pthreads build
-  (measured ≈227 B/call + ~32 B/addr of legitimate retained table → ≈13 MB);
-  **passes** on the native 32-bit path (no table at all → ≈0).
-- Runtime: <100 ms (no waits, just hash-table ops).
-- Caveats: the legitimate retained bucket table is ~16 B/bucket × 2N buckets
-  ≈ 32 B/addr; the 100 B/addr threshold sits above that and well below the
-  ~260 B/addr leaky total; ASan redzones inflate the leak signal, improving the
-  margin. If the fix lands, re-run to confirm ≈32 B/addr.
 
 
 ### A1.10 (item 1.10) `atomic_notify` with `max_threads_to_wake == 0`
@@ -170,13 +141,12 @@ positive tests, and a future reviewer should not "complete" them naively:
   negative `duration` (advisory) instead (`atomic_wait_expected_test.c`).
 
 Note: the negative-`duration` *return value* is covered by the suite, but the
-negative-`duration` *leak* is the new A1.3 test — these are separate behaviours.
+negative-`duration` *leak* is covered by the A1.3 `wait_expected_leak_test.c` —
+these are separate behaviours.
 
 ---
 
 ## G. Implementation order
 
-2. **A1.3** — the remaining open leak bug; the test design below is ready to
-   implement and will turn CI red on the pthreads backend legs.
 4. **A1.10** — wait for the WG14 wording decision before committing either variant.
 5. **§3 CI legs** — pthreads-on-Windows, Win32-x86, header-only+pthreads.

@@ -472,8 +472,11 @@ extern "C"
         if(now.tv_sec > end.tv_sec ||
            (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
         {
+          // Duration timeout: fall through to the common tail below so the
+          // proxy node we created is released (analysis §1.3), then return 0.
           errno = ETIMEDOUT;
-          return 0;
+          ret = 0;
+          break;
         }
         ts_remaining.tv_sec = end.tv_sec - now.tv_sec;
         if(end.tv_nsec >= now.tv_nsec)
@@ -490,14 +493,18 @@ extern "C"
                                                 WG14_ATOMIC_WAITS_NULLPTR);
       if(ret2 < 0 && ret2 != -EAGAIN && ret2 != -EINTR && ret2 != -ETIMEDOUT)
       {
+        // Hard wait error: fall through to the common tail below so the proxy
+        // node we created is released (analysis §1.3), then return -1.
         errno = -ret2;
-        return -1;
+        ret = -1;
+        break;
       }
       item_counter =
       WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT_GET_COUNTER(item);
     }
     if(item != WG14_ATOMIC_WAITS_NULLPTR)
     {
+      const int save_errno = errno;
       if(!lock_is_held)
       {
         WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
@@ -509,6 +516,7 @@ extern "C"
         WG14_ATOMIC_WAITS_PREFIX(hash_table_remove_item)(table, object);
       }
       WG14_ATOMIC_WAITS_PREFIX(hash_table_unlock)(table);
+      errno = save_errno;
     }
     return ret;
   }

@@ -11,6 +11,8 @@ add_code_test(atomic_notify_more_test SOURCES
               "atomic_notify_more_test.c" FEATURES c_std_11)
 add_code_test(atomic_wait_race_test SOURCES
               "atomic_wait_race_test.c" FEATURES c_std_11)
+add_code_test(wait_expected_leak_test SOURCES
+              "wait_expected_leak_test.c" FEATURES c_std_11)
 
 # Benchmark: built only on demand (EXCLUDE_FROM_ALL) and excluded from ctest
 # with -E benchmark so ordinary test runs stay fast and deterministic.

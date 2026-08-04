@@ -21,28 +21,7 @@ Findings below are categorised as:
 
 
 
-### 1.3 (Medium) Hash-table fallback: timed-out / errored `atomic_wait_expected` leaks its proxy node **[verified]**
 
-**Proposal basis:** none (resource hygiene), but §7.17.7.10 requires the function
-to return *and* `*expected` to be usable on timeout; the leaked node makes every
-subsequent wait/notify on that address pay a spurious stale-node lookup.
-
-**Implementation:** `atomic_wait_generic` increments `use_count` when it creates
-the proxy (`atomic_wait_common.ipp.ipp:431-459`) and decrements/removes it only
-on the success `break` path (`atomic_wait_common.ipp.ipp:492-505`). The two early
-returns bypass the cleanup:
-
-- duration timeout: `atomic_wait_common.ipp.ipp:466-470` (`errno = ETIME; return 0;`), and
-- hard wait error: `atomic_wait_common.ipp.ipp:485-490` (`errno = -ret2; return -1;`).
-
-Each such exit leaves the proxy in the table with `use_count == 1` forever.
-Reproduced on the forced-pthreads build: **50,000 timed-out `atomic_wait_expected`
-calls leaked ~11 MB (≈227 B per call — proxy + mutex/condvar + bucket)**; the
-native 32-bit path (no hash table) leaked nothing measurable (4 B/leak allocator
-noise). The suite's own "full-duration timeout", "zero timeout", and "negative
-duration" sections all leak one node per call on the pthreads backend; they pass
-because the process exits. Fix: decrement/remove on all exits, or move the
-cleanup to a common tail.
 
 ### 1.4 (Medium) Store/exchange wakeups (NOTE 1) not implemented on the fallback path
 
@@ -211,9 +190,6 @@ triggerable by a portable unit test):
     `atomic_wait_race_test.c`, which drives a *spurious* `atomic_notify_all`
     (value unchanged) on the pthreads backend and asserts the fallback waiter
     re-suspends (bounded CPU burn).
-  - §1.3: the timeout/error proxy leak is invisible to the suite (process exits); a long-running
-    process doing many timed-out waits on distinct addresses on the pthreads backend grows
-    memory without bound.
 
 ---
 
@@ -221,7 +197,6 @@ triggerable by a portable unit test):
 
 | # | Issue | Severity | Basis / Location |
 |---|-------|----------|------------------|
-| 1.3 | Fallback: timed-out/errored `atomic_wait_expected` leaks proxy nodes (~227 B/call) **[verified]** | Medium | `atomic_wait_common.ipp.ipp:466-470,485-490` |
 | 1.4 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |
 | 1.7 | Native vs generic `*expected` returned from different loads (success>failure) | Low | §7.17.7.10 Returns; `atomic_wait_common.ipp.ipp:697-715` vs `:418-428` |
 | 1.8 | `success > failure` numeric enum comparison is non-portable | Low | `atomic_wait_common.ipp.ipp:418,702` |
