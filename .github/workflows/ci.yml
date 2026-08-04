@@ -21,7 +21,7 @@ jobs:
         shared: [OFF, ON]
         pthreads: [OFF, ON]
     env:
-      NAME: Linux-${{ matrix.compiler }}-${{ matrix.debug }}-${{ matrix.standard }}-${{ matrix.shared }}-${{ matrix.pthreads }}
+      NAME: Linux-${{ matrix.compiler }}-${{ matrix.debug }}-C${{ matrix.standard }}-shared=${{ matrix.shared }}-pthreads=${{ matrix.pthreads }}
       CC: ${{ matrix.compiler }}
           
     steps:
@@ -53,7 +53,7 @@ jobs:
         shared: [OFF, ON]
         pthreads: [OFF, ON]
     env:
-      NAME: MacOS-${{ matrix.debug }}-${{ matrix.standard }}-${{ matrix.shared }}-${{ matrix.pthreads }}
+      NAME: MacOS-${{ matrix.debug }}-C${{ matrix.standard }}-shared=${{ matrix.shared }}-pthreads=${{ matrix.pthreads }}
           
     steps:
     - uses: actions/checkout@v4
@@ -82,7 +82,7 @@ jobs:
         standard: [11, 17]
         shared: [OFF, ON]
     env:
-      NAME: Windows-${{ matrix.debug }}-${{ matrix.standard }}-${{ matrix.shared }}
+      NAME: Windows-${{ matrix.debug }}-C${{ matrix.standard }}-shared=${{ matrix.shared }}
           
     steps:
     - uses: actions/checkout@v4
@@ -117,16 +117,17 @@ jobs:
         - standard: 23
           pthreads: ON
     env:
-      NAME: FreeBSD-C${{ matrix.standard }}-pthreads${{ matrix.pthreads }}
+      NAME: FreeBSD-C${{ matrix.standard }}-pthreads=${{ matrix.pthreads }}
     steps:
     - uses: actions/checkout@v4
 
     # Real FreeBSD kernel under QEMU on the standard Ubuntu runner (github's
     # own runners are Ubuntu/macOS/Windows only). The workspace is synced into
     # the VM and the prepare/run scripts execute inside it as root. clang ships
-    # in the FreeBSD base system (with ASan/UBSan runtimes), so only cmake is
-    # installed; cache-after-prepare reuses the prepared image on later runs so
-    # pkg install runs once. release "15" tracks the newest 15.x point release.
+    # in the FreeBSD base system (with ASan/UBSan runtimes), so only cmake and
+    # ninja are installed; cache-after-prepare reuses the prepared image on
+    # later runs so pkg install runs once. release "15" tracks the newest 15.x
+    # point release.
     - name: FreeBSD VM
       uses: vmactions/freebsd-vm@v1
       with:
@@ -134,11 +135,11 @@ jobs:
         usesh: true
         cache-after-prepare: true
         prepare: |
-          pkg install -y cmake
+          pkg install -y cmake ninja
         run: |
           set -e
           mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_STANDARD=${{ matrix.standard }} -DALWAYS_USE_PTHREADS_BACKEND=${{ matrix.pthreads }} -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
+          cmake -G Ninja .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_STANDARD=${{ matrix.standard }} -DALWAYS_USE_PTHREADS_BACKEND=${{ matrix.pthreads }} -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
           cmake --build . --parallel
           ctest --output-on-failure --timeout 300 -E benchmark
 
