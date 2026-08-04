@@ -235,7 +235,7 @@ Backends and native widths</h1>
 <p>Semantics notes:</p>
 <ul>
 <li><span class="tt"><a class="el" href="atomic__wait_8h.html#ad973556345025dd5aba57bac4f52b0e9" title="Wait up to duration for *object to no longer equal *expected.">atomic_wait_expected</a></span> and <span class="tt"><a class="el" href="atomic__wait_8h.html#acc56d5bc0452d1f7047d20fe192beae4" title="Atomically compare-exchange and notify up to max_threads_to_wake waiters.">atomic_notify</a></span> are defined for the native 4-byte <span class="tt"><a class="el" href="atomic__wait_8h.html#ac640d2bb1d1e9963ae2c0376c2113c6a">uint_native_wait_notify_t</a></span> type only.</li>
-<li><span class="tt">duration</span> is a relative remaining interval measured against a monotonic clock, or <span class="tt">NULL</span> for no timeout. macOS, Windows and pthreads consume it directly; Linux converts it to an absolute CLOCK_MONOTONIC deadline for <span class="tt">FUTEX_WAIT</span>; FreeBSD leaves the <span class="tt">UMTX_ABSTIME</span> flag clear so the kernel treats it as relative.</li>
+<li><span class="tt">duration</span> is a relative remaining interval measured against a monotonic clock, or <span class="tt">NULL</span> for no timeout. macOS, Windows and pthreads consume it directly; Linux converts it to an absolute CLOCK_MONOTONIC deadline for <span class="tt">FUTEX_WAIT_BITSET</span>; FreeBSD leaves the <span class="tt">UMTX_ABSTIME</span> flag clear so the kernel treats it as relative.</li>
 <li><span class="tt"><a class="el" href="atomic__wait_8h.html#af7a8f1ca57f51a69c072599e29139ea5" title="Wake all threads blocked on object.">atomic_notify_all</a></span> always wakes every parked waiter: Windows uses <span class="tt">WakeByAddressAll</span>, macOS uses the wake-all flag, Linux and FreeBSD clamp the wake count, pthreads broadcasts.</li>
 <li><span class="tt"><a class="el" href="atomic__wait_8h.html#acc56d5bc0452d1f7047d20fe192beae4" title="Atomically compare-exchange and notify up to max_threads_to_wake waiters.">atomic_notify</a></span> returns a positive value (on some platforms 1 plus the number of threads woken) on a successful exchange, <span class="tt">0</span> when the compare-exchange fails, and a negative <span class="tt">-errno</span> on error.</li>
 </ul>
@@ -244,17 +244,21 @@ Supported targets</h1>
 <p>This library should work well on any POSIX implementation, as well as Microsoft Windows. You will need a minimum of C 11 in your toolchain.</p>
 <p>Current CI test targets:</p>
 <ul>
-<li>Ubuntu Linux, x64.</li>
-<li>Mac OS, AArch64.</li>
-<li>Microsoft Windows, x64.</li>
+<li>Ubuntu Linux, x64: GCC and clang, Debug and Release, C11 and C23, static and shared, native and pthreads backends, all under AddressSanitizer + UBSan.</li>
+<li>Mac OS, AArch64: clang, Debug and Release, C11 and C23, static and shared, native and pthreads backends, all under AddressSanitizer + UBSan.</li>
+<li>Microsoft Windows, x64 (MSVC VS2022): Debug and Release, C11 and C17, static and shared, under AddressSanitizer.</li>
+<li>FreeBSD, x64: FreeBSD 15 clang (real FreeBSD VM on an Ubuntu runner via <span class="tt">vmactions/freebsd-vm</span>), Release, C11 and C23, native and pthreads backends, under AddressSanitizer + UBSan.</li>
+<li>Header-only (<span class="tt">-DHEADER_ONLY_BUILD=ON</span>): all three runners, C11 and C23 (C17 on MSVC).</li>
+<li>ThreadSanitizer: Ubuntu (GCC and clang) and Mac OS (clang), C11 and C23.</li>
+<li>Fil-C memory-safe compiler: Ubuntu, C11, native and pthreads backends, via <span class="tt">cmake/filc-toolchain.cmake</span>.</li>
 </ul>
 <p>Current compilers:</p>
 <ul>
 <li>GCC</li>
 <li>clang</li>
 <li>MSVC</li>
+<li>Fil-C (memory-safe clang derivative)</li>
 </ul>
-<p>The <span class="tt">-DHEADER_ONLY_BUILD=ON</span> configuration is exercised separately in CI on all three runners, for both C11 and C23 (C17 on MSVC).</p>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md8"></a>
 Configuration</h1>
 <p>You can find a number of user definable macros to override in <span class="tt"><a class="el" href="config_8h.html">config.h</a></span>. They have sensible defaults on the major platforms and toolchains.</p>
@@ -270,9 +274,9 @@ Empirical results</h2>
 <tr class="markdownTableHead">
 <th class="markdownTableHeadNone">Machine  </th><th class="markdownTableHeadNone">OS  </th><th class="markdownTableHeadNone">Toolchain  </th><th class="markdownTableHeadNone">Native fast path (4-byte)  </th><th class="markdownTableHeadNone">Hash-table fallback (1-byte)  </th></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">Apple M3 Pro (12 cores, 18 GB)  </td><td class="markdownTableBodyNone">macOS 15.7.7 (Darwin 24.6.0, arm64)  </td><td class="markdownTableBodyNone">Apple clang 17.0.0, <span class="tt">Release</span> (<span class="tt">-O2</span>)  </td><td class="markdownTableBodyNone">1.47 µs  </td><td class="markdownTableBodyNone">1.74 µs  </td></tr>
+<td class="markdownTableBodyNone">Apple M3 Pro (12 cores, 18 GB)  </td><td class="markdownTableBodyNone">macOS 15.7.7 (Darwin 24.6.0, arm64)  </td><td class="markdownTableBodyNone">Apple clang 17.0.0, <span class="tt">Release</span> (<span class="tt">-O2</span>)  </td><td class="markdownTableBodyNone">1.46 µs  </td><td class="markdownTableBodyNone">1.51 µs  </td></tr>
 </table>
-<p>On the POSIX backends the hash-table fallback is consistently slower than the native fast path (here 1.62–1.82 µs vs 1.40–1.49 µs across the 10 runs), reflecting the per-cycle hash-table lookup and proxy management on top of the same kernel suspend-wake primitive.</p>
+<p>On the POSIX backends the hash-table fallback is still consistently slower than the native fast path (here 1.48–1.54 µs vs 1.43–1.48 µs across the 10 runs), reflecting the per-cycle hash-table lookup and proxy management on top of the same kernel suspend-wake primitive. The gap has narrowed from ~0.27 µs to ~0.05 µs versus the earlier figures: this benchmark's single consumer recreates and removes its proxy every cycle, and the hash-table rework (triangular probing, tombstone-based removal, and load-factor growth) replaced the previous O(bucket_count) backward-shift compaction on every removal with an O(1) tombstone.</p>
 <p>Reproduce with:</p>
 <div class="fragment"><div class="line">cmake -S . -B build -DCMAKE_BUILD_TYPE=Release</div>
 <div class="line">cmake --build build --target benchmark_atomic_wait_test --parallel</div>
