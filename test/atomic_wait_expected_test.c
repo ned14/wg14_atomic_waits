@@ -5,6 +5,17 @@
 // localisable to the exact section of the test that blocked.
 #define SECTION(name) fprintf(stderr, "atomic_wait_expected_test: " name "\n")
 
+// Bounded head start given to a spawned waiter, after the park handshake,
+// before a value-changing store + notify. The handshake only guarantees the
+// waiter is *about* to enter the wait; on a heavily instrumented runtime (e.g.
+// Fil-C, whose per-access checks make thread entry comparatively slow) the
+// store can beat the waiter's first recheck every attempt, so the wait would
+// return 0 (no suspension) on every retry. The settle sits inside the
+// park-handshake synchronisation (AGENTS.md rule 5: sleeps within a proper
+// synchronisation are permitted) and mirrors spurious_wake_test in
+// atomic_wait_more_test.c.
+#define PARK_SETTLE_MS 50
+
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int g_parked = 0;
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int g_result = 0;
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t g_reloaded = 0;
@@ -223,7 +234,11 @@ int atomic_wait_expected_test_main(void)
   // load; the wait then returns immediately with 0 (no suspension, per the
   // documented \retval contract) and *expected reloaded to the new value. That
   // is a legitimate outcome, not a failure, so retry until the waiter really
-  // suspends and this section exercises the notified path.
+  // suspends and this section exercises the notified path. The PARK_SETTLE_MS
+  // settle after the handshake gives the waiter a bounded head start to reach
+  // the kernel park, so this section does not depend on winning that race (it
+  // flaked on Fil-C + pthreads backend CI, see plans/combined-analysis.md
+  // §1.14).
   int wr;
   int suspended = 0;
   for(int attempt = 0; !suspended && attempt < 100; attempt++)
@@ -235,6 +250,7 @@ int atomic_wait_expected_test_main(void)
     thrd_t thr;
     CHECK(thrd_create(&thr, waiter_suspend_once, &value) == thrd_success);
     test_wait_until("g_parked", &g_parked, 1);
+    thrd_sleep_ms(PARK_SETTLE_MS);
     atomic_store_explicit(&value, 7, memory_order_seq_cst);
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
     CHECK(thrd_join(thr, &wr) == thrd_success);
@@ -270,7 +286,8 @@ int atomic_wait_expected_test_main(void)
   // Same entry-window race as the "suspend once" section above: g_td_parked is
   // stored before the waiter enters the wait, so the store+notify can land
   // before the waiter's first value load and the wait returns 0 (no suspension)
-  // with *expected reloaded. Retry until the waiter really suspends.
+  // with *expected reloaded. The PARK_SETTLE_MS settle removes the race; the
+  // retry loop below is a safety net. Retry until the waiter really suspends.
   int td_suspended = 0;
   for(int attempt = 0; !td_suspended && attempt < 100; attempt++)
   {
@@ -282,6 +299,7 @@ int atomic_wait_expected_test_main(void)
     thrd_t td;
     CHECK(thrd_create(&td, waiter_timed, &value) == thrd_success);
     test_wait_until("g_td_parked", &g_td_parked, 1);
+    thrd_sleep_ms(PARK_SETTLE_MS);
     atomic_store_explicit(&value, 3, memory_order_seq_cst);
     WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
     CHECK(thrd_join(td, &wr) == thrd_success);
@@ -350,7 +368,8 @@ int atomic_wait_expected_test_main(void)
     CHECK(expected == 0);
 
     // Same entry-window race as the "suspend once" section above: retry until
-    // the waiter really suspends.
+    // the waiter really suspends (the PARK_SETTLE_MS settle removes the race;
+    // the retry loop below is a safety net).
     int o_suspended = 0;
     for(int attempt = 0; !o_suspended && attempt < 100; attempt++)
     {
@@ -362,6 +381,7 @@ int atomic_wait_expected_test_main(void)
       thrd_t ow;
       CHECK(thrd_create(&ow, waiter_orders, &value) == thrd_success);
       test_wait_until("g_o_parked", &g_o_parked, 1);
+      thrd_sleep_ms(PARK_SETTLE_MS);
       atomic_store_explicit(&value, 11, memory_order_seq_cst);
       WG14_ATOMIC_WAITS_PREFIX(atomic_notify_one)(&value);
       CHECK(thrd_join(ow, &wr) == thrd_success);
