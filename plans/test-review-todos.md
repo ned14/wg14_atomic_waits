@@ -86,10 +86,6 @@ add both variants.
 - **Windows x86 (32-bit).** Add an x86 MSVC (or mingw) CI leg to exercise the
   8-byte hash-table fallback (`HAVE_WAIT_ON_ADDRESS_64` is `_WIN64`-gated,
   `atomic_wait_windows.c.ipp:142`).
-- **Header-only + pthreads combination.** Trivial: add
-  `-DHEADER_ONLY_BUILD=ON -DALWAYS_USE_PTHREADS_BACKEND=ON` to one existing
-  matrix leg; the existing `header_only_test` (multi-TU ODR) then covers the
-  weak-symbol coalescing of the pthreads proxy.
 - **C23 `<stdatomic.h>` name collision.** Not testable until a C23 implementation
   ships the same function names; then a compile test including both headers would
   expose the macro redefinition (`atomic_wait.h:265-384`). Record as forward-compat

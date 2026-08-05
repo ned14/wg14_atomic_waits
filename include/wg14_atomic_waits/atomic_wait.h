@@ -83,7 +83,8 @@ extern "C"
 
   //! `_Atomic`-qualified `uint_native_wait_notify_t`.
   /*! \details
-      The atomic type used for wait/notify on objects of type `uint_native_wait_notify_t`.
+      The atomic type used for wait/notify on objects of type
+     `uint_native_wait_notify_t`.
   */
   typedef WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t
   WG14_ATOMIC_WAITS_PREFIX(atomic_uint_native_wait_notify_t);
@@ -148,10 +149,10 @@ extern "C"
 #define _WG14_ATOMIC_WAITS_STATIC_ASSERT(cond, msg) _Static_assert((cond), msg)
 #endif
 
-#define _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(object)                       \
-  _WG14_ATOMIC_WAITS_STATIC_ASSERT(                                             \
-  ((sizeof(*(object)) == 1) || (sizeof(*(object)) == 2) ||                       \
-   (sizeof(*(object)) == 4) || (sizeof(*(object)) == 8)),                        \
+#define _WG14_ATOMIC_WAITS_IMPL_atomic_width_check(object)                     \
+  _WG14_ATOMIC_WAITS_STATIC_ASSERT(                                            \
+  ((sizeof(*(object)) == 1) || (sizeof(*(object)) == 2) ||                     \
+   (sizeof(*(object)) == 4) || (sizeof(*(object)) == 8)),                      \
   "wg14_atomic_waits: sizeof(*object) must be 1, 2, 4, or 8 bytes")
 
 #define _WG14_ATOMIC_WAITS_IMPL_atomic_wait(object, expected)                  \
@@ -162,26 +163,26 @@ extern "C"
       WG14_ATOMIC_WAITS_PREFIX(atomic_wait_1)(                                 \
       (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t     \
        *) (object),                                                            \
-       (uint_least8_t) (expected),                                              \
-       WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst);                   \
+      (uint_least8_t) (expected),                                              \
+      WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst);                   \
     else if(sizeof(*(object)) == 2)                                            \
       WG14_ATOMIC_WAITS_PREFIX(atomic_wait_2)(                                 \
       (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t    \
        *) (object),                                                            \
-       (uint_least16_t) (expected),                                             \
-       WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst);                   \
+      (uint_least16_t) (expected),                                             \
+      WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst);                   \
     else if(sizeof(*(object)) == 4)                                            \
       WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(                                 \
       (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t    \
        *) (object),                                                            \
-       (uint_least32_t) (expected),                                             \
-       WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst);                   \
+      (uint_least32_t) (expected),                                             \
+      WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst);                   \
     else if(sizeof(*(object)) == 8)                                            \
       WG14_ATOMIC_WAITS_PREFIX(atomic_wait_8)(                                 \
       (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t    \
        *) (object),                                                            \
-       (uint_least64_t) (expected),                                             \
-       WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst);                   \
+      (uint_least64_t) (expected),                                             \
+      WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst);                   \
   } while(0)
 
 #define _WG14_ATOMIC_WAITS_IMPL_atomic_wait_explicit(object, expected, order)  \
@@ -192,22 +193,22 @@ extern "C"
       WG14_ATOMIC_WAITS_PREFIX(atomic_wait_1)(                                 \
       (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t     \
        *) (object),                                                            \
-        (uint_least8_t) (expected), (order));                                   \
+      (uint_least8_t) (expected), (order));                                    \
     else if(sizeof(*(object)) == 2)                                            \
       WG14_ATOMIC_WAITS_PREFIX(atomic_wait_2)(                                 \
       (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t    \
        *) (object),                                                            \
-        (uint_least16_t) (expected), (order));                                  \
+      (uint_least16_t) (expected), (order));                                   \
     else if(sizeof(*(object)) == 4)                                            \
       WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(                                 \
       (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t    \
        *) (object),                                                            \
-        (uint_least32_t) (expected), (order));                                  \
+      (uint_least32_t) (expected), (order));                                   \
     else if(sizeof(*(object)) == 8)                                            \
       WG14_ATOMIC_WAITS_PREFIX(atomic_wait_8)(                                 \
       (const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t    \
        *) (object),                                                            \
-        (uint_least64_t) (expected), (order));                                  \
+      (uint_least64_t) (expected), (order));                                   \
   } while(0)
 
 #define _WG14_ATOMIC_WAITS_IMPL_atomic_notify_one(object)                      \
@@ -254,139 +255,154 @@ extern "C"
        *) (object));                                                           \
   } while(0)
 
-  //! Block the calling thread until `*object` equals `expected`.
-  /*! \details
-      Dispatch macro. Width of `*object` must be 1, 2, 4, or 8 bytes.
-      Uses `memory_order_seq_cst` for the load comparison.
-      If woken spuriously (value still equals `expected`), parks again.
-      \param object Pointer to a `volatile _Atomic` integer of width 1, 2, 4, or 8.
-      \param expected Expected value to compare against.
-  */
+//! Block the calling thread until `*object` equals `expected`.
+/*! \details
+    Dispatch macro. Width of `*object` must be 1, 2, 4, or 8 bytes.
+    Uses `memory_order_seq_cst` for the load comparison.
+    If woken spuriously (value still equals `expected`), parks again.
+    \param object Pointer to a `volatile _Atomic` integer of width 1, 2, 4,
+   or 8.
+    \param expected Expected value to compare against.
+*/
 #define atomic_wait(object, expected)                                          \
   _WG14_ATOMIC_WAITS_IMPL_atomic_wait((object), (expected))
 
-  //! Block until `*object` equals `expected`, using a caller-specified memory order.
-  /*! \details
-      Dispatch macro. Width of `*object` must be 1, 2, 4, or 8 bytes.
-      If woken spuriously (value still equals `expected`), parks again.
-      \param object Pointer to a `volatile _Atomic` integer of width 1, 2, 4, or 8.
-      \param expected Expected value to compare against.
-      \param order Memory order for the load comparison.
-  */
+//! Block until `*object` equals `expected`, using a caller-specified memory
+//! order.
+/*! \details
+    Dispatch macro. Width of `*object` must be 1, 2, 4, or 8 bytes.
+    If woken spuriously (value still equals `expected`), parks again.
+    \param object Pointer to a `volatile _Atomic` integer of width 1, 2, 4,
+   or 8.
+    \param expected Expected value to compare against.
+    \param order Memory order for the load comparison.
+*/
 #define atomic_wait_explicit(object, expected, order)                          \
   _WG14_ATOMIC_WAITS_IMPL_atomic_wait_explicit((object), (expected), (order))
 
-  //! Wake at least one thread blocked on `object`.
-  /*! \details
-      Dispatch macro. Width of `*object` must be 1, 2, 4, or 8 bytes.
-      If no thread is currently blocked on `object`, the call has no effect.
-      \param object Pointer to a `volatile _Atomic` integer of width 1, 2, 4, or 8.
-  */
+//! Wake at least one thread blocked on `object`.
+/*! \details
+    Dispatch macro. Width of `*object` must be 1, 2, 4, or 8 bytes.
+    If no thread is currently blocked on `object`, the call has no effect.
+    \param object Pointer to a `volatile _Atomic` integer of width 1, 2, 4,
+   or 8.
+*/
 #define atomic_notify_one(object)                                              \
   _WG14_ATOMIC_WAITS_IMPL_atomic_notify_one((object))
 
-  //! Wake all threads blocked on `object`.
-  /*! \details
-      Dispatch macro. Width of `*object` must be 1, 2, 4, or 8 bytes.
-      If no thread is currently blocked on `object`, the call has no effect.
-      \param object Pointer to a `volatile _Atomic` integer of width 1, 2, 4, or 8.
-  */
+//! Wake all threads blocked on `object`.
+/*! \details
+    Dispatch macro. Width of `*object` must be 1, 2, 4, or 8 bytes.
+    If no thread is currently blocked on `object`, the call has no effect.
+    \param object Pointer to a `volatile _Atomic` integer of width 1, 2, 4,
+   or 8.
+*/
 #define atomic_notify_all(object)                                              \
   _WG14_ATOMIC_WAITS_IMPL_atomic_notify_all((object))
 
 #ifdef __cplusplus
-namespace wg14_atomic_waits {
-template <class T>
-inline int atomic_native_check_helper(T const volatile *object) {
-  static_assert(
-    (sizeof(*object) == sizeof(::WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t))),
-    "wg14_atomic_waits: sizeof(*object) must equal "
-    "sizeof(uint_native_wait_notify_t) (4 bytes)");
-  (void) object;
-  return 0;
-}
+namespace wg14_atomic_waits
+{
+  template <class T>
+  inline int atomic_native_check_helper(T const volatile *object)
+  {
+    static_assert((sizeof(*object) == sizeof(::WG14_ATOMIC_WAITS_PREFIX(
+                                      uint_native_wait_notify_t))),
+                  "wg14_atomic_waits: sizeof(*object) must equal "
+                  "sizeof(uint_native_wait_notify_t) (4 bytes)");
+    (void) object;
+    return 0;
+  }
 }  // namespace wg14_atomic_waits
 #define _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object)                    \
   (::wg14_atomic_waits::atomic_native_check_helper((object)))
 #else
 #define _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object)                    \
   ((void) sizeof(struct {                                                      \
-    _Static_assert((sizeof(*(object)) ==                                       \
-                    sizeof(WG14_ATOMIC_WAITS_PREFIX(                           \
-                    uint_native_wait_notify_t))),                              \
-                   "wg14_atomic_waits: sizeof(*object) must equal "           \
-                   "sizeof(uint_native_wait_notify_t) (4 bytes)");              \
-    int _unused;                                                                \
+    _Static_assert((sizeof(*(object)) == sizeof(WG14_ATOMIC_WAITS_PREFIX(      \
+                                         uint_native_wait_notify_t))),         \
+                   "wg14_atomic_waits: sizeof(*object) must equal "            \
+                   "sizeof(uint_native_wait_notify_t) (4 bytes)");             \
+    int _unused;                                                               \
   }))
 #endif
 
-  //! Wait up to `duration` for `*object` to no longer equal `*expected`.
-  /*! \details
-      `sizeof(*object)` must equal `sizeof(uint_native_wait_notify_t)`.
-      If `*object` does not equal `*expected`, returns immediately. Otherwise
-      suspends the thread until notified or until `duration` passes. On wake,
-      re-compares; if still equal, parks again. Total accumulated wait is at
-      least `*duration`. On return, `*expected` is updated to the most recently
-      loaded value.
-      `duration` is a relative remaining interval measured against a monotonic
-      clock, or `NULL` for no timeout. Every backend implements it as a
-      relative duration: macOS and Windows consume it directly, Linux converts
-      it to an absolute CLOCK_MONOTONIC deadline for `FUTEX_WAIT_BITSET`, FreeBSD
-      leaves the `UMTX_ABSTIME` flag clear (making the kernel treat it as
-      relative), and the pthreads backend converts it to an absolute
-      `pthread_cond_timedwait` deadline internally.
-      \param object Pointer to a `volatile _Atomic uint_least32_t`.
-      \param expected Pointer to value to compare against; updated on return.
-      \param duration Maximum time to wait, or `NULL` for no timeout.
-      \param success Memory order when the wait ends with value != `*expected`.
-      \param failure Memory order on timeout or early mismatch.
-      \return Zero if no suspension or timeout; positive if suspended at least once; negative on error.
-      \retval 0 No suspension occurred, or duration timeout.
-      \retval >0 Thread was suspended at least once.
-      \retval <0 Error.
-  */
-#define atomic_wait_expected(object, expected, duration, success, failure)        \
-  (                                                                               \
-  _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object),                            \
-  WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected_32)(                              \
-  (                                                                               \
-  const volatile WG14_ATOMIC_WAITS_PREFIX(atomic_uint_native_wait_notify_t)     \
-  *) (object),                                                                    \
-  (WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) *) (expected),             \
+//! Wait up to `duration` for `*object` to no longer equal `*expected`.
+/*! \details
+    `sizeof(*object)` must equal `sizeof(uint_native_wait_notify_t)`.
+    If `*object` does not equal `*expected`, returns immediately. Otherwise
+    suspends the thread until notified or until `duration` passes. On wake,
+    re-compares; if still equal, parks again. Total accumulated wait is at
+    least `*duration`. On return, `*expected` is updated to the most recently
+    loaded value.
+    `duration` is a relative remaining interval measured against a monotonic
+    clock, or `NULL` for no timeout. Every backend implements it as a
+    relative duration: macOS and Windows consume it directly, Linux converts
+    it to an absolute CLOCK_MONOTONIC deadline for `FUTEX_WAIT_BITSET`, FreeBSD
+    leaves the `UMTX_ABSTIME` flag clear (making the kernel treat it as
+    relative), and the pthreads backend converts it to an absolute
+    `pthread_cond_timedwait` deadline internally.
+    \param object Pointer to a `volatile _Atomic uint_least32_t`.
+    \param expected Pointer to value to compare against; updated on return.
+    \param duration Maximum time to wait, or `NULL` for no timeout.
+    \param success Memory order when the wait ends with value != `*expected`.
+    \param failure Memory order on timeout or early mismatch.
+    \return Zero if no suspension or timeout; positive if suspended at least
+   once; negative on error.
+    \retval 0 No suspension occurred, or duration timeout.
+    \retval >0 Thread was suspended at least once.
+    \retval <0 Error.
+*/
+#define atomic_wait_expected(object, expected, duration, success, failure)     \
+  (                                                                            \
+  _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object),                         \
+  WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected_32)(                           \
+  (const volatile WG14_ATOMIC_WAITS_PREFIX(                                    \
+  atomic_uint_native_wait_notify_t) *) (object),                               \
+  (WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) *) (expected),          \
   (duration), (success), (failure)))
 
-  //! Atomically compare-exchange and notify up to `max_threads_to_wake` waiters.
-  /*! \details
-      `sizeof(*object)` must equal `sizeof(uint_native_wait_notify_t)`.
-      Performs `atomic_compare_exchange_strong_explicit`. If `*object` still
-      equals `*expected`, replaces it with `desired` and wakes up to
-      `max_threads_to_wake` waiting threads. On some platforms the return
-      value may be 1 plus the number of threads woken.
-      \param object Pointer to a `volatile _Atomic uint_least32_t`.
-      \param expected Pointer to value compared against; updated on failure.
-      \param desired Value to store on successful exchange.
-      \param max_threads_to_wake Maximum number of waiters to wake.
-      \param success Memory order on success.
-      \param failure Memory order on failure.
-      \return Positive (1 + woken count) on successful exchange; zero on failure; negative on error.
-      \retval >0 Successful exchange and notify.
-      \retval 0 Compare-exchange failed.
-      \retval <0 Error.
-  */
+//! Atomically compare-exchange and notify up to `max_threads_to_wake` waiters.
+/*! \details
+    `sizeof(*object)` must equal `sizeof(uint_native_wait_notify_t)`.
+    Performs `atomic_compare_exchange_strong_explicit`. If `*object` still
+    equals `*expected`, replaces it with `desired` and wakes up to
+    `max_threads_to_wake` waiting threads. On some platforms the return
+    value may be 1 plus the number of threads woken.
+    \param object Pointer to a `volatile _Atomic uint_least32_t`.
+    \param expected Pointer to value compared against; updated on failure.
+    \param desired Value to store on successful exchange.
+    \param max_threads_to_wake Maximum number of waiters to wake.
+    \param success Memory order on success.
+    \param failure Memory order on failure.
+    \return Positive (1 + woken count) on successful exchange; zero on failure;
+   negative on error.
+    \retval >0 Successful exchange and notify.
+    \retval 0 Compare-exchange failed.
+    \retval <0 Error.
+*/
 #define atomic_notify(object, expected, desired, max_threads_to_wake, success, \
                       failure)                                                 \
   (                                                                            \
-  _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object),                            \
+  _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object),                         \
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_32)(                                  \
-  (volatile WG14_ATOMIC_WAITS_PREFIX(atomic_uint_native_wait_notify_t) *)        \
-  (object),                                                                       \
+  (volatile WG14_ATOMIC_WAITS_PREFIX(                                          \
+  atomic_uint_native_wait_notify_t) *) (object),                               \
   (WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) *) (expected),          \
   (desired), (max_threads_to_wake), (success), (failure)))
 
 
 // -- Header-only platform selection --
+// WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS forces the portable pthreads backend in
+// header-only mode (the CMake ALWAYS_USE_PTHREADS_BACKEND option defines it).
+// It must be checked first: a source TU already including the pthreads backend
+// sets its include guard before pulling in this header, so re-including it here
+// is a guarded no-op, whereas including a different native backend alongside
+// the pthreads one would be a double definition.
 #if WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY
-#if defined(_WIN32) || defined(_WIN64)
+#if WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS
+#include "detail/impl/atomic_wait_pthreads.c.ipp"
+#elif defined(_WIN32) || defined(_WIN64)
 #include "detail/impl/atomic_wait_windows.c.ipp"
 #elif defined(__linux__)
 #include "detail/impl/atomic_wait_linux.c.ipp"

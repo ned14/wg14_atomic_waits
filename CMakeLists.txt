@@ -40,6 +40,13 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 if(HEADER_ONLY_BUILD)
   target_compile_definitions(${PROJECT_NAME} PUBLIC WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY)
 endif()
+# The header-only platform dispatch must select the same backend as the source
+# TU that ALWAYS_USE_PTHREADS_BACKEND picks. Defining this PUBLIC propagates the
+# choice to consumers that include the header in header-only mode; in the
+# compiled-library build it is harmless (the dispatch block is disabled).
+if(ALWAYS_USE_PTHREADS_BACKEND)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS)
+endif()
 target_compile_features(${PROJECT_NAME} PRIVATE c_std_11 cxx_std_11)
 wg14_atomic_waits_enable_c11_atomics(${PROJECT_NAME})
 target_compile_definitions(${PROJECT_NAME} PRIVATE WG14_ATOMIC_WAITS_SOURCE)

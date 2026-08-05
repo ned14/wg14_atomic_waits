@@ -72,6 +72,17 @@ translation units:
 #include <wg14_atomic_waits/atomic_wait.h>
 ```
 
+To force the portable pthreads backend in header-only mode instead of the native
+platform backend, additionally define `WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS`
+(equivalent to the CMake `-DALWAYS_USE_PTHREADS_BACKEND=ON` option, which defines
+it for you):
+
+```c
+#define WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY 1
+#define WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS 1
+#include <wg14_atomic_waits/atomic_wait.h>
+```
+
 When using the CMake `-DHEADER_ONLY_BUILD=ON` build this macro is defined for you.
 
 ### CMake
@@ -102,7 +113,7 @@ Relevant CMake options:
 |---|---|---|
 | `BUILD_SHARED_LIBS` | `OFF` | Build a shared library instead of a static one. |
 | `HEADER_ONLY_BUILD` | `OFF` | Header-only "unity" build; defines `WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY`. |
-| `ALWAYS_USE_PTHREADS_BACKEND` | `OFF` | Force the portable pthreads backend on every platform. |
+| `ALWAYS_USE_PTHREADS_BACKEND` | `OFF` | Force the portable pthreads backend on every platform (also in header-only mode, via `WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS`). |
 | `BUILD_TESTING` | `ON` | Build the test suite (only when this is the top-level project). |
 | `CMAKE_C_STANDARD` | `11` | C standard; C23 (`23`) is also supported. |
 
@@ -166,7 +177,8 @@ Current CI test targets:
   `vmactions/freebsd-vm`), Release, C11 and C23, native and pthreads backends,
   under AddressSanitizer + UBSan.
 - Header-only (`-DHEADER_ONLY_BUILD=ON`): all three runners, C11 and C23
-  (C17 on MSVC).
+  (C17 on MSVC); the header-only + `ALWAYS_USE_PTHREADS_BACKEND` combination is
+  additionally run on Linux and macOS at both C11 and C23.
 - ThreadSanitizer: Ubuntu (GCC and clang) and Mac OS (clang), C11 and C23.
 - Fil-C memory-safe compiler: Ubuntu, C11, native and pthreads backends, via
   `cmake/filc-toolchain.cmake`.

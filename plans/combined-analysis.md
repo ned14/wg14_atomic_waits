@@ -53,6 +53,27 @@ wording, but the no-op behaviour is a defensible reading ("notified" implies
 waking someone) — flagging for the proposal to clarify.
 
 
+### 1.13 (Low) errno hygiene: `atomic_notify` wake failure and `atomic_wait_generic` success path
+
+**Proposal basis:** §7.17.7.11 Returns ("If unsuccessful, this function returns a
+negative value"); §7.17.7.7/7.17.7.10 error return. The proposal does not mandate
+errno, so this is a consistency concern, not a violation.
+
+**Implementation:** on a genuine wake-by-address failure the Linux/FreeBSD/macOS
+`wake_by_address32/64` restore `save_errno` before returning `-e`
+(`atomic_wait_linux.c.ipp:116-122`, `atomic_wait_freebsd.c.ipp:156-161`,
+`atomic_wait_macos.c.ipp:131-137`), so `atomic_notify_32` returns negative but
+leaves the caller's `errno` unchanged — the caller cannot decode the returned
+`-errno`. The *wait* paths do set `errno` on hard error
+(`atomic_wait_common.ipp.ipp:613`, `:875`). So the error signal differs between
+`atomic_notify` and `atomic_wait*`. Minor, since futex/ulock/wake failures on a
+valid address are effectively unreachable.
+
+Separately, `atomic_wait_generic`'s success path captures `save_errno` only *after*
+the wait loop (line 622), i.e. after the internal `find_or_create` (which calls
+`calloc`) may have altered errno, so a successful generic wait does not guarantee a
+pristine errno. Cosmetic.
+
 ---
 
 ## 2. Where the proposal is under-specified (implementation is defensible but the wording is loose)
@@ -95,6 +116,19 @@ proposal leaves behaviour open; the flag here is "document for the reader", not 
   "1 + woken" count is fabricated
   (`atomic_wait_macos.c.ipp:130`, `atomic_wait_windows.c.ipp:185`). "At least
   `max_threads_to_wake`" makes this compliant; the exact count is implementation-defined.
+- **macOS `__ulock_wait` treats a `timeout` of 0 as "wait indefinitely".**
+  `wait_on_address32/64` pass `timeout_us = 0` for a `NULL` duration and only force
+  `timeout_us = 1` for a non-NULL zero-duration (`atomic_wait_macos.c.ipp:59-69`), i.e. the
+  code *implicitly assumes* `__ulock_wait`'s 0 means infinite. This is an undocumented
+  kernel-contract assumption; it is confirmed by every passing macOS native test but would
+  silently break (immediate-return busy-spin, or infinite hang) on an implementation that
+  treats 0 as "expire immediately".
+- **`uint_native_wait_notify_t` is hard-coded to `uint_least32_t` (4 bytes).** The proposal
+  defines it as "the smallest `uint_leastN_t` with N ≥ 32 for which atomic waits have least
+  overhead" and constrains `atomic_wait_expected`/`atomic_notify` to `sizeof == 4`
+  (`atomic_wait.h:76-89`). On every supported platform `uint_least32_t` is 32-bit, but on a
+  hypothetical platform where the least 32-bit type is wider, the header's blanket
+  "`sizeof(...) == 4`" static_assert and native-dispatch macros would be wrong.
 
 ---
 
@@ -110,10 +144,6 @@ exercised by `.github/workflows/ci.yml`:
 - **Windows x86 (32-bit)** — `HAVE_WAIT_ON_ADDRESS_64` is guarded by `_WIN64`
   (`atomic_wait_windows.c.ipp:142`), so the 8-byte hash-table fallback is only
   exercised on 32-bit Windows, which CI never builds (x64 only).
-- **Header-only mode is not CI-tested in combination with
-  `ALWAYS_USE_PTHREADS_BACKEND`** (the pthreads proxy's `pthread_mutex_t`/`cond`
-  state is embedded in `proxy_waiter_t`; a weak `shared_global_hash_table`
-  coalesced across TUs is the only cross-TU sharing — fine, but untested).
 - **C23 semantics** — the public macros `atomic_wait`/`atomic_notify` etc. are
   defined bare in the header (`atomic_wait.h:265-384`). Once real C23
   `<stdatomic.h>` ships the same names, including this header alongside it will
@@ -148,4 +178,6 @@ triggerable by a portable unit test):
 |---|-------|----------|------------------|
 | 1.4 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |
 | 1.10 | `atomic_notify` max=0 returns 0 without performing the exchange | Low | §7.17.7.11; `atomic_wait_common.ipp.ipp:764-767` |
-| §3 | pthreads-on-Windows / Win32-x86 never CI-tested | Medium (risk) | `.github/workflows/ci.yml` |
+| 1.13 | errno hygiene: `atomic_notify` wake-failure returns negative with errno unchanged; generic success path may clobber errno | Low | `atomic_wait_linux.c.ipp:116-122`; `atomic_wait_common.ipp.ipp:622` |
+| §2 | macOS `__ulock_wait` 0==infinite is an implicit contract; `uint_native_wait_notify_t` 4-byte hard-code assumption | Low (portability) | `atomic_wait_macos.c.ipp:59-69`; `atomic_wait.h:76-89` |
+| §3 | pthreads-on-Windows / Win32-x86 never CI-tested (header-only+pthreads now covered) | Medium (risk) | `.github/workflows/ci.yml` |

@@ -144,7 +144,7 @@ jobs:
           ctest --output-on-failure --timeout 300 -E benchmark
 
   HeaderOnly:
-    name: Header-only (${{ matrix.os }}, C${{ matrix.standard }})
+    name: Header-only (${{ matrix.os }}, C${{ matrix.standard }}, pthreads=${{ matrix.pthreads }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -152,16 +152,34 @@ jobs:
         include:
         - os: ubuntu-latest
           standard: 11
+          pthreads: OFF
         - os: ubuntu-latest
           standard: 23
+          pthreads: OFF
+        - os: ubuntu-latest
+          standard: 11
+          pthreads: ON
+        - os: ubuntu-latest
+          standard: 23
+          pthreads: ON
         - os: macos-latest
           standard: 11
+          pthreads: OFF
         - os: macos-latest
           standard: 23
+          pthreads: OFF
+        - os: macos-latest
+          standard: 11
+          pthreads: ON
+        - os: macos-latest
+          standard: 23
+          pthreads: ON
         - os: windows-latest
           standard: 11
+          pthreads: OFF
         - os: windows-latest
           standard: 17
+          pthreads: OFF
     steps:
     - uses: actions/checkout@v4
 
@@ -170,7 +188,7 @@ jobs:
       shell: bash
       run: |
         mkdir build && cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_STANDARD=${{ matrix.standard }} -DHEADER_ONLY_BUILD=ON -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
+        cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_STANDARD=${{ matrix.standard }} -DHEADER_ONLY_BUILD=ON -DALWAYS_USE_PTHREADS_BACKEND=${{ matrix.pthreads }} -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
 
     - name: Configure (Windows)
       if: runner.os == 'Windows'

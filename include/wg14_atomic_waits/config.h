@@ -67,6 +67,14 @@ limitations under the License.
 #define WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY 0
 #endif
 
+// Forces the portable pthreads backend in header-only mode instead of the
+// native platform backend. The CMake ALWAYS_USE_PTHREADS_BACKEND option defines
+// this for both the library and its consumers; a pure header-only user can also
+// define it manually before including <wg14_atomic_waits/atomic_wait.h>.
+#ifndef WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS
+#define WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS 0
+#endif
+
 #ifndef WG14_ATOMIC_WAITS_EXTERN_IMPL
 #if defined(WG14_ATOMIC_WAITS_SOURCE) && WG14_ATOMIC_WAITS_SOURCE
 #ifdef _WIN32
