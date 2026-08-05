@@ -7,8 +7,9 @@ set(CMAKE_C_STANDARD "11" CACHE STRING "C standard to use")
 option(HEADER_ONLY_BUILD "Build using header only (unity build)" OFF)
 option(ALWAYS_USE_PTHREADS_BACKEND "Always use pthreads backend" OFF)
 
-project(wg14_atomic_waits LANGUAGES C CXX)
+project(wg14_atomic_waits VERSION 1.0.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 enable_testing()
 
 # MSVC provides C11 atomics (<stdatomic.h> -> vcruntime_c11_stdatomic.h) only
@@ -87,13 +88,28 @@ install(TARGETS ${PROJECT_NAME}
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 
-configure_file(
+# The public headers are the library's interface; without this nothing under
+# <wg14_atomic_waits/...> is available to a find_package consumer.
+install(DIRECTORY include/wg14_atomic_waits
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
+# configure_package_config_file (not plain configure_file) defines the
+# check_required_components() helper the config template calls and keeps the
+# config relocatable; write_basic_package_version_file makes versioned
+# find_package(wg14_atomic_waits N.N) requests work.
+configure_package_config_file(
   "${CMAKE_CURRENT_LIST_DIR}/cmake/ProjectConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-  @ONLY
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
+)
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion
 )
 install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
 )
 install(EXPORT ${PROJECT_NAME}Exports
