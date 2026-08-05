@@ -50,6 +50,27 @@ set_target_properties(header_only_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY
                       "${CMAKE_BINARY_DIR}/bin")
 add_test(NAME header_only_test COMMAND $<TARGET_FILE:header_only_test>)
 
+# Install + find_package consumer test: stages `cmake --install` into a scratch
+# prefix, checks the headers / package config / version file landed, then
+# configures, builds and runs the standalone consumer in install_consumer/
+# against that prefix. This is what catches install/export regressions (the
+# §1.15 defects) which a build-and-ctest-only CI would otherwise never see.
+add_test(
+  NAME install_consumer_test
+  COMMAND ${CMAKE_COMMAND}
+    -DINSTALL_TEST_BUILD_DIR=${PROJECT_BINARY_DIR}
+    -DINSTALL_TEST_CONSUMER_DIR=${CMAKE_CURRENT_SOURCE_DIR}/install_consumer
+    -DINSTALL_TEST_PREFIX=${CMAKE_BINARY_DIR}/install_test_prefix
+    -DINSTALL_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}/install_test_consumer
+    -DINSTALL_TEST_VERSION=${PROJECT_VERSION}
+    -DINSTALL_TEST_CONFIG=$<CONFIG>
+    -DINSTALL_TEST_MULTI_CONFIG=$<BOOL:${GENERATOR_IS_MULTI_CONFIG}>
+    -DINSTALL_TEST_TOOLCHAIN=${CMAKE_TOOLCHAIN_FILE}
+    -DINSTALL_TEST_C_COMPILER=${CMAKE_C_COMPILER}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/install_consumer/driver.cmake
+)
+set_tests_properties(install_consumer_test PROPERTIES TIMEOUT 180)
+
 # Compile-fail tests: each source deliberately uses an invalid input type for a
 # macro in atomic_wait.h and must FAIL to compile, with the compiler emitting a
 # specific diagnostic (DIAGNOSTIC is the expected message TEXT, matched as a
