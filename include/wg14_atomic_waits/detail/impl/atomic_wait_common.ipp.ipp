@@ -330,9 +330,12 @@ extern "C"
           WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_INIT(bucket->proxy);
           if(ret != 0)
           {
-            // custom init failed
             free(bucket->proxy);
             bucket->proxy = WG14_ATOMIC_WAITS_NULLPTR;
+            // Custom init failed (the pthreads proxy init reports the negated
+            // error). Report it so callers returning -1 from a failed wait get
+            // a decodable errno, matching the OOM paths (analysis §1.13).
+            errno = -ret;
             return WG14_ATOMIC_WAITS_NULLPTR;
           }
           bucket->key = key;
@@ -496,6 +499,12 @@ extern "C"
                        WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order failure)
   {
     int ret = 0;
+    // A successful wait must not clobber errno, but the hash-table
+    // find_or_create call below runs calloc() which may modify it (analysis
+    // §1.13). Preserve the entry value and only keep an errno that the wait
+    // loop itself deliberately set (timeout or hard error).
+    const int entry_errno = errno;
+    bool errno_is_set = false;
     struct timespec end = {0, 0};
     if(duration != WG14_ATOMIC_WAITS_NULLPTR)
     {
@@ -590,6 +599,7 @@ extern "C"
           // Duration timeout: fall through to the common tail below so the
           // proxy node we created is released (analysis §1.3), then return 0.
           errno = ETIMEDOUT;
+          errno_is_set = true;
           ret = 0;
           break;
         }
@@ -611,6 +621,7 @@ extern "C"
         // Hard wait error: fall through to the common tail below so the proxy
         // node we created is released (analysis §1.3), then return -1.
         errno = -ret2;
+        errno_is_set = true;
         ret = -1;
         break;
       }
@@ -619,7 +630,10 @@ extern "C"
     }
     if(item != WG14_ATOMIC_WAITS_NULLPTR)
     {
-      const int save_errno = errno;
+      // Restore the entry errno unless the wait loop set one (timeout or hard
+      // error); the internal allocator calls may otherwise have clobbered it
+      // (analysis §1.13).
+      const int save_errno = errno_is_set ? errno : entry_errno;
       if(!lock_is_held)
       {
         WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
@@ -809,6 +823,10 @@ extern "C"
   {
 #if WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32
     int ret = 0;
+    // A successful wait must not clobber errno (analysis §1.13). The wait
+    // itself (wait_on_address32) preserves it, so only restore the entry value
+    // on the success exit; the timeout and hard-error exits set their own.
+    const int entry_errno = errno;
     struct timespec end = {0, 0};
     if(duration != WG14_ATOMIC_WAITS_NULLPTR)
     {
@@ -842,6 +860,7 @@ extern "C"
           // caused the wait to exit, which would break our API contract.
           WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, success);
         }
+        errno = entry_errno;
         return ret;
       }
       ret = 1;
@@ -906,7 +925,16 @@ extern "C"
   const int ret =
   WG14_ATOMIC_WAITS_PREFIX(atomic_notify_generic)(object, max_threads_to_wake);
 #endif
-    return (ret < 0) ? ret : (1 + ret);
+    if(ret < 0)
+    {
+      // The low-level wake helpers restore errno on failure (analysis §1.13),
+      // so report the wake failure to the caller the same way the wait paths
+      // do: set errno to the decoded error before returning the negative
+      // -errno value.
+      errno = -ret;
+      return ret;
+    }
+    return 1 + ret;
   }
 
 #ifdef __cplusplus

@@ -53,26 +53,6 @@ wording, but the no-op behaviour is a defensible reading ("notified" implies
 waking someone) — flagging for the proposal to clarify.
 
 
-### 1.13 (Low) errno hygiene: `atomic_notify` wake failure and `atomic_wait_generic` success path
-
-**Proposal basis:** §7.17.7.11 Returns ("If unsuccessful, this function returns a
-negative value"); §7.17.7.7/7.17.7.10 error return. The proposal does not mandate
-errno, so this is a consistency concern, not a violation.
-
-**Implementation:** on a genuine wake-by-address failure the Linux/FreeBSD/macOS
-`wake_by_address32/64` restore `save_errno` before returning `-e`
-(`atomic_wait_linux.c.ipp:116-122`, `atomic_wait_freebsd.c.ipp:156-161`,
-`atomic_wait_macos.c.ipp:131-137`), so `atomic_notify_32` returns negative but
-leaves the caller's `errno` unchanged — the caller cannot decode the returned
-`-errno`. The *wait* paths do set `errno` on hard error
-(`atomic_wait_common.ipp.ipp:613`, `:875`). So the error signal differs between
-`atomic_notify` and `atomic_wait*`. Minor, since futex/ulock/wake failures on a
-valid address are effectively unreachable.
-
-Separately, `atomic_wait_generic`'s success path captures `save_errno` only *after*
-the wait loop (line 622), i.e. after the internal `find_or_create` (which calls
-`calloc`) may have altered errno, so a successful generic wait does not guarantee a
-pristine errno. Cosmetic.
 
 ---
 
@@ -178,6 +158,5 @@ triggerable by a portable unit test):
 |---|-------|----------|------------------|
 | 1.4 | Store/exchange wakeups absent on fallback path | Medium | §7.17.7.7 / §7.17.7.10 NOTE 1 |
 | 1.10 | `atomic_notify` max=0 returns 0 without performing the exchange | Low | §7.17.7.11; `atomic_wait_common.ipp.ipp:764-767` |
-| 1.13 | errno hygiene: `atomic_notify` wake-failure returns negative with errno unchanged; generic success path may clobber errno | Low | `atomic_wait_linux.c.ipp:116-122`; `atomic_wait_common.ipp.ipp:622` |
 | §2 | macOS `__ulock_wait` 0==infinite is an implicit contract; `uint_native_wait_notify_t` 4-byte hard-code assumption | Low (portability) | `atomic_wait_macos.c.ipp:59-69`; `atomic_wait.h:76-89` |
 | §3 | pthreads-on-Windows / Win32-x86 never CI-tested (header-only+pthreads now covered) | Medium (risk) | `.github/workflows/ci.yml` |
