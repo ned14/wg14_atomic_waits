@@ -120,8 +120,13 @@ if(NOT _app)
                       "${_app_candidates})")
 endif()
 if(WIN32)
-  set(_run_cmd "${CMAKE_COMMAND}" -E env
-      "PATH=${INSTALL_TEST_PREFIX}/bin;$ENV{PATH}")
+  # A semicolon inside a quoted CMake argument is a list separator, so the
+  # PATH value (semicolon-separated on Windows) must be assembled first and
+  # every semicolon escaped, otherwise `cmake -E env` receives the path split
+  # into several arguments and tries to "run" the second one.
+  set(_full_path "${INSTALL_TEST_PREFIX}/bin;$ENV{PATH}")
+  string(REPLACE ";" "\\;" _escaped_path "${_full_path}")
+  set(_run_cmd "${CMAKE_COMMAND}" -E env "PATH=${_escaped_path}")
 elseif(APPLE)
   set(_run_cmd "${CMAKE_COMMAND}" -E env
       "DYLD_LIBRARY_PATH=${INSTALL_TEST_PREFIX}/lib")
