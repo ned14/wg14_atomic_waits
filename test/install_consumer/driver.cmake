@@ -11,16 +11,17 @@
 #   INSTALL_TEST_BINARY_DIR    scratch consumer build dir (removed first)
 #   INSTALL_TEST_VERSION       the project version, required EXACT
 #   INSTALL_TEST_CONFIG        build configuration ($<CONFIG>)
-#   INSTALL_TEST_MULTI_CONFIG  1 for a multi-config generator
 #   INSTALL_TEST_TOOLCHAIN     CMAKE_TOOLCHAIN_FILE, if the build used one
 #   INSTALL_TEST_C_COMPILER     CMAKE_C_COMPILER of the parent build
+#   INSTALL_TEST_C_FLAGS        CMAKE_C_FLAGS of the parent build (e.g. the
+#                               /fsanitize:address flag on the MSVC CI legs)
+#   INSTALL_TEST_EXE_LINKER_FLAGS  CMAKE_EXE_LINKER_FLAGS of the parent build
 
 cmake_minimum_required(VERSION 3.15)
 
 foreach(_req
     INSTALL_TEST_BUILD_DIR INSTALL_TEST_CONSUMER_DIR INSTALL_TEST_PREFIX
-    INSTALL_TEST_BINARY_DIR INSTALL_TEST_VERSION INSTALL_TEST_CONFIG
-    INSTALL_TEST_MULTI_CONFIG)
+    INSTALL_TEST_BINARY_DIR INSTALL_TEST_VERSION INSTALL_TEST_CONFIG)
   if(NOT DEFINED ${_req})
     message(FATAL_ERROR "install_consumer_test: ${_req} was not passed to the driver")
   endif()
@@ -36,13 +37,16 @@ function(_check_res _res _step)
   endif()
 endfunction()
 
-# 1. Install the already-built library into the scratch prefix.
+# 1. Install the already-built library into the scratch prefix. --config is
+#    passed when known: it is required on multi-config generators to select the
+#    configuration ctest is running, and is accepted (and ignored) on
+#    single-config generators.
 set(_install_cmd
-    "${CMAKE_COMMAND}" --install "${INSTALL_TEST_BUILD_DIR}"
-    --prefix "${INSTALL_TEST_PREFIX}")
-if(INSTALL_TEST_MULTI_CONFIG)
+    "${CMAKE_COMMAND}" --install "${INSTALL_TEST_BUILD_DIR}")
+if(INSTALL_TEST_CONFIG)
   list(APPEND _install_cmd --config "${INSTALL_TEST_CONFIG}")
 endif()
+list(APPEND _install_cmd --prefix "${INSTALL_TEST_PREFIX}")
 execute_process(COMMAND ${_install_cmd}
                 RESULT_VARIABLE _res OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
 _check_res("${_res}" "cmake --install")
@@ -63,7 +67,9 @@ endforeach()
 
 # 3. Configure the standalone consumer against the staged install. Reuse the
 #    same toolchain/compiler so cross builds (Fil-C, TSan, ASan/UBSan) still
-#    link and run.
+#    link and run; the MSVC CI builds the library with /fsanitize:address, so
+#    the consumer must use the same flags or linking the instrumented library
+#    fails with unresolved __asan_* symbols.
 set(_configure_cmd
     "${CMAKE_COMMAND}" -S "${INSTALL_TEST_CONSUMER_DIR}"
     -B "${INSTALL_TEST_BINARY_DIR}"
@@ -73,13 +79,20 @@ if(INSTALL_TEST_TOOLCHAIN)
   list(APPEND _configure_cmd "-DCMAKE_TOOLCHAIN_FILE=${INSTALL_TEST_TOOLCHAIN}")
 else()
   list(APPEND _configure_cmd "-DCMAKE_C_COMPILER=${INSTALL_TEST_C_COMPILER}")
+  if(INSTALL_TEST_C_FLAGS)
+    list(APPEND _configure_cmd "-DCMAKE_C_FLAGS=${INSTALL_TEST_C_FLAGS}")
+  endif()
+  if(INSTALL_TEST_EXE_LINKER_FLAGS)
+    list(APPEND _configure_cmd
+         "-DCMAKE_EXE_LINKER_FLAGS=${INSTALL_TEST_EXE_LINKER_FLAGS}")
+  endif()
 endif()
 execute_process(COMMAND ${_configure_cmd}
                 RESULT_VARIABLE _res OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
 _check_res("${_res}" "consumer configure")
 
 set(_build_cmd "${CMAKE_COMMAND}" --build "${INSTALL_TEST_BINARY_DIR}")
-if(INSTALL_TEST_MULTI_CONFIG)
+if(INSTALL_TEST_CONFIG)
   list(APPEND _build_cmd --config "${INSTALL_TEST_CONFIG}")
 endif()
 execute_process(COMMAND ${_build_cmd}
