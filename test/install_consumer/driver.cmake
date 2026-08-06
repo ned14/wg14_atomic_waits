@@ -16,6 +16,9 @@
 #   INSTALL_TEST_C_FLAGS        CMAKE_C_FLAGS of the parent build (e.g. the
 #                               /fsanitize:address flag on the MSVC CI legs)
 #   INSTALL_TEST_EXE_LINKER_FLAGS  CMAKE_EXE_LINKER_FLAGS of the parent build
+#   INSTALL_TEST_EXE_SUFFIX     CMAKE_EXECUTABLE_SUFFIX of the parent build
+#                               (".exe" on Windows; CMAKE_EXECUTABLE_SUFFIX is
+#                               not defined inside a -P script)
 
 cmake_minimum_required(VERSION 3.15)
 
@@ -101,9 +104,20 @@ _check_res("${_res}" "consumer build")
 
 # 4. Run the consumer app. A shared-library install needs the loader to find
 #    the staged library: prepend the appropriate search path.
-set(_app "${INSTALL_TEST_BINARY_DIR}/install_consumer_app${CMAKE_EXECUTABLE_SUFFIX}")
-if(NOT EXISTS "${_app}")
-  message(FATAL_ERROR "install_consumer_test: built app not found: ${_app}")
+set(_app_candidates
+    "${INSTALL_TEST_BINARY_DIR}/install_consumer_app${INSTALL_TEST_EXE_SUFFIX}"
+    "${INSTALL_TEST_BINARY_DIR}/install_consumer_app")
+set(_app)
+foreach(_candidate IN LISTS _app_candidates)
+  if(EXISTS "${_candidate}")
+    set(_app "${_candidate}")
+    break()
+  endif()
+endforeach()
+if(NOT _app)
+  message(FATAL_ERROR "install_consumer_test: built app not found in "
+                      "${INSTALL_TEST_BINARY_DIR} (tried "
+                      "${_app_candidates})")
 endif()
 if(WIN32)
   set(_run_cmd "${CMAKE_COMMAND}" -E env
