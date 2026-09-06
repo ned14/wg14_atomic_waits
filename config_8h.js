@@ -1,5 +1,6 @@
 var config_8h =
 [
+    [ "WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS", "config_8h.html#aa46dcb6e54e425f8e609b134825ebd10", null ],
     [ "WG14_ATOMIC_WAITS_ATTR_UNUSED", "config_8h.html#a3ee15333c1152c017271cb2dd6947886", null ],
     [ "WG14_ATOMIC_WAITS_DEFAULT_VISIBILITY", "config_8h.html#afb4365712cfd437a681e30738a31354e", null ],
     [ "WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY", "config_8h.html#a4334631ad88f0ac2a01d916f1e674a58", null ],
