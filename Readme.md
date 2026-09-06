@@ -214,11 +214,26 @@ proxy object on top of the underlying wait primitive.
 All figures come from `benchmark_atomic_wait_test` (see "Reproduce" below): a
 ping-pong suspend-wake benchmark in which one producer and one consumer
 exchange a shared counter. The consumer parks in `atomic_wait` (a genuine
-kernel suspend), the producer waits for the park signal, settles briefly so the
-park has reached the kernel, then stores a new value and notifies. The reported
-figure is the mean suspend-wake latency — the time from the producer's notify
-timestamp to the consumer's return from `atomic_wait`, which excludes the
-settle — over 10 runs.
+kernel suspend), the producer busy-settles so the park has reached the kernel,
+then stores a new value and notifies. Every wake latency is timed on the
+consumer from the producer's notify timestamp (ns-resolution monotonic clock)
+to its own return from `atomic_wait`, which excludes the settle.
+
+Because suspend-wake latencies are skewed (CPU idle-exit, scheduler and
+frequency effects pile onto the right tail), each run records 500,000 wake
+latencies per path and reports percentiles rather than a mean; the tabulated
+figures are the mean over 10 runs of the per-run p50/p90/p99/p99.9. A fixed
+settle is not portable: if it is too short for the consumer's park to reach
+the kernel before each notify, producer and consumer fall into phase-locked
+orbits and the reported figure swings with the run duration. The benchmark
+therefore calibrates the settle at run time, raising it from an 8 µs floor
+until at least 99.9% of notifies catch a genuinely parked consumer (the
+"calibration" lines, and the per-run "suspend fraction", both printed by the
+binary), and measures both paths at the same calibrated settle so the CPU
+idle-state effects of the park duration cannot favour one path. On this host
+the settle calibrated to 8–10 µs in 9 of 10 runs (20 µs in the remaining run,
+which landed in an external load burst), and the measured suspend fraction was
+≥ 99.6% in every run.
 
 The two measured paths are the 4-byte native fast path and the 1-byte width,
 which on the POSIX backends is served by the hash-table fallback (see
@@ -226,24 +241,40 @@ which on the POSIX backends is served by the hash-table fallback (see
 (`WaitOnAddress`), so its fallback column measures the native 1-byte path
 instead.
 
-| Machine | OS | Toolchain | Native fast path (4-byte) | Hash-table fallback (1-byte) |
+| Machine | OS | Toolchain | Native fast path (4-byte), p50/p90/p99/p99.9 | Hash-table fallback (1-byte), p50/p90/p99/p99.9 |
 |---|---|---|---|---|
-| Apple M3 Pro (12 cores, 18 GB) | macOS 15.7.7 (Darwin 24.6.0, arm64) | Apple clang 17.0.0, `Release` (`-O2`) | 1.46 µs | 1.51 µs |
+| Apple M3 Pro (12 cores, 18 GB) | macOS 15.7.7 (Darwin 24.6.0, arm64) | Apple clang 17.0.0, `Release` | unknown — pending re-run with the new benchmark | unknown — pending re-run with the new benchmark |
+| AMD Ryzen Threadripper PRO 5975WX (32 cores, 130 GB) | Fedora 44 (Aurora, Linux 7.0.12, x86_64) | GCC 16.1.1, `Release` (`-O3`) | 3.57 / 4.14 / 4.72 / 7.17 µs | 3.73 / 4.32 / 5.01 / 8.02 µs |
 
-On the POSIX backends the hash-table fallback is still consistently slower than
-the native fast path (here 1.48–1.54 µs vs 1.43–1.48 µs across the 10 runs),
-reflecting the per-cycle hash-table lookup and proxy management on top of the
-same kernel suspend-wake primitive. The gap has narrowed from ~0.27 µs to
-~0.05 µs versus the earlier figures: this benchmark's single consumer recreates
-and removes its proxy every cycle, and the hash-table rework (triangular
-probing, tombstone-based removal, and load-factor growth) replaced the previous
-O(bucket_count) backward-shift compaction on every removal with an O(1)
-tombstone.
+On the Threadripper host above the hash-table fallback is slower than the
+native fast path at every percentile in every one of the 10 runs: p50 by a
+mean of +0.16 µs (per-run range +0.14 to +0.20 µs, against per-run p50 values
+of 3.50–3.52 µs native and 3.65–3.67 µs fallback in the 9 settle-8/10 µs
+runs), and p99.9 by a mean of +0.84 µs. The growth from the ~0.16 µs median
+cost to the ~0.84 µs 99.9th-percentile cost is consistent with the fallback's
+per-cycle hash-table lookup, proxy reference counting, and malloc/free of the
+proxy on top of the same kernel suspend-wake primitive: the steady-state
+overhead is small and nearly constant, while the occasional scheduler-visible
+contention (the proxy is removed and recreated under the hash-table lock every
+cycle) lands in the tail.
+
+Figures measured with earlier versions of the benchmark are not comparable
+with the rows above: the old benchmark used a fixed 3 µs settle and a
+µs-resolution clock, and on fast x86_64 its settle was too short for the
+consumer to reliably reach the kernel before each notify, which made the
+reported mean swing with the run duration (and could even invert the
+native/fallback ordering, as no code-level difference can make the fallback
+faster). The macOS row therefore awaits re-running the current benchmark on
+that machine.
 
 Reproduce with:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target benchmark_atomic_wait_test --parallel
+# A full run calibrates each path and then records 500,000 wake latencies per
+# path; allow ~25 s. On Linux, pinning the run to a handful of dedicated CPUs
+# (taskset -c 0,2,4,6) keeps the figures tightest; the tabulated x86_64 row
+# was measured that way.
 ./build/bin/benchmark_atomic_wait_test
 ```
