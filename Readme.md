@@ -243,7 +243,7 @@ instead.
 
 | Machine | OS | Toolchain | Native fast path (4-byte), p50/p90/p99/p99.9 | Hash-table fallback (1-byte), p50/p90/p99/p99.9 |
 |---|---|---|---|---|
-| Apple M3 Pro (12 cores, 18 GB) | macOS 15.7.7 (Darwin 24.6.0, arm64) | Apple clang 17.0.0, `Release` | unknown — pending re-run with the new benchmark | unknown — pending re-run with the new benchmark |
+| Apple M3 Pro (12 cores, 18 GB) | macOS 15.7.9 (Darwin 24.6.0, arm64) | Apple clang 17.0.0, `Release` | 5.00 / 6.00 / 10.7 / 37.7 µs | 5.10 / 6.00 / 12.0 / 37.1 µs |
 | AMD Ryzen Threadripper PRO 5975WX (32 cores, 130 GB) | Fedora 44 (Aurora, Linux 7.0.12, x86_64) | GCC 16.1.1, `Release` (`-O3`) | 3.57 / 4.14 / 4.72 / 7.17 µs | 3.73 / 4.32 / 5.01 / 8.02 µs |
 
 On the Threadripper host above the hash-table fallback is slower than the
@@ -264,8 +264,14 @@ with the rows above: the old benchmark used a fixed 3 µs settle and a
 consumer to reliably reach the kernel before each notify, which made the
 reported mean swing with the run duration (and could even invert the
 native/fallback ordering, as no code-level difference can make the fallback
-faster). The macOS row therefore awaits re-running the current benchmark on
-that machine.
+faster).
+
+On the M3 Pro host the two paths are essentially tied at the median (5.00 µs
+native vs 5.10 µs fallback) and p90 (6 µs both), with the fallback only
+slightly slower in the tail (p99 10.7 vs 12.0 µs, p99.9 37.7 vs 37.1 µs). The
+settle calibrated to 48–64 µs in 8 of 10 runs and to 10–12 µs in the other
+two, so the tail figures carry more run-to-run scatter than on the Threadripper
+host; the median and p90 are stable across every run.
 
 Reproduce with:
 
