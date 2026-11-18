@@ -407,9 +407,14 @@ namespace wg14_atomic_waits
 // sets its include guard before pulling in this header, so re-including it here
 // is a guarded no-op, whereas including a different native backend alongside
 // the pthreads one would be a double definition.
+// WG14_ATOMIC_WAITS_USE_SPIN_BACKEND selects the atomics-only spin backend.
+// Finite timeouts use the shared monotonic clock unless
+// WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT is defined.
 #if WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY
 #if WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS
 #include "detail/impl/atomic_wait_pthreads.c.ipp"
+#elif WG14_ATOMIC_WAITS_USE_SPIN_BACKEND
+#include "detail/impl/atomic_wait_spin.c.ipp"
 #elif defined(_WIN32) || defined(_WIN64)
 #include "detail/impl/atomic_wait_windows.c.ipp"
 #elif defined(__linux__)

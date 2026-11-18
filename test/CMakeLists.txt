@@ -1,3 +1,8 @@
+if(SPIN_BACKEND AND NOT WIN32)
+  find_package(Threads REQUIRED)
+  link_libraries(Threads::Threads)
+endif()
+
 add_code_test(atomic_wait_test SOURCES "atomic_wait_test.c" FEATURES c_std_11)
 add_code_test(atomic_wait_expected_test SOURCES
               "atomic_wait_expected_test.c" FEATURES c_std_11)
@@ -32,7 +37,7 @@ add_code_test(hash_table_whitebox_test SOURCES
 # (the included backend .ipp has no meaning on Windows, which lacks
 # <pthread.h>). Threads::Threads supplies -pthread on Linux; macOS/FreeBSD
 # provide pthreads in the system C library.
-if(NOT WIN32)
+if(NOT WIN32 AND NOT SPIN_BACKEND)
   add_code_test(pthreads_proxy_whitebox_test SOURCES
                 "pthreads_proxy_whitebox_test.c" FEATURES c_std_11)
   find_package(Threads REQUIRED)

@@ -6,12 +6,42 @@ set(CMAKE_CXX_VISIBILITY_PRESET "hidden" CACHE STRING "Only make explicitly expo
 set(CMAKE_C_STANDARD "11" CACHE STRING "C standard to use")
 option(HEADER_ONLY_BUILD "Build using header only (unity build)" OFF)
 option(ALWAYS_USE_PTHREADS_BACKEND "Always use pthreads backend" OFF)
+option(SPIN_BACKEND "Use the atomics-only spin backend" OFF)
+option(SPIN_BACKEND_TIMEOUTS "Support finite durations in the spin backend" OFF)
+option(SPIN_BACKEND_YIELD "Call thrd_yield()/std::this_thread::yield() in the spin loop" OFF)
 option(NO_ATOMIC_WAIT_TIMEOUT "Disable non-zero finite atomic wait durations" OFF)
+
+if(SPIN_BACKEND AND ALWAYS_USE_PTHREADS_BACKEND)
+  message(FATAL_ERROR "SPIN_BACKEND and ALWAYS_USE_PTHREADS_BACKEND are mutually exclusive")
+endif()
+if(SPIN_BACKEND_TIMEOUTS AND NOT SPIN_BACKEND)
+  message(FATAL_ERROR "SPIN_BACKEND_TIMEOUTS requires SPIN_BACKEND")
+endif()
+if(SPIN_BACKEND_YIELD AND NOT SPIN_BACKEND)
+  message(FATAL_ERROR "SPIN_BACKEND_YIELD requires SPIN_BACKEND")
+endif()
+if(SPIN_BACKEND_TIMEOUTS AND NO_ATOMIC_WAIT_TIMEOUT)
+  message(FATAL_ERROR "SPIN_BACKEND_TIMEOUTS requires NO_ATOMIC_WAIT_TIMEOUT=OFF")
+endif()
+if(SPIN_BACKEND AND NOT SPIN_BACKEND_TIMEOUTS AND NOT NO_ATOMIC_WAIT_TIMEOUT)
+  message(STATUS "SPIN_BACKEND without SPIN_BACKEND_TIMEOUTS requires NO_ATOMIC_WAIT_TIMEOUT; enabling it")
+  set(NO_ATOMIC_WAIT_TIMEOUT ON CACHE BOOL
+      "Disable non-zero finite atomic wait durations" FORCE)
+endif()
 
 project(wg14_atomic_waits VERSION 2.0.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(CheckIncludeFile)
 enable_testing()
+
+if(SPIN_BACKEND_YIELD)
+  check_include_file(threads.h WG14_ATOMIC_WAITS_HAVE_THREADS_H)
+  if(NOT WG14_ATOMIC_WAITS_HAVE_THREADS_H)
+    message(FATAL_ERROR "SPIN_BACKEND_YIELD requires a C implementation with <threads.h>")
+  endif()
+  find_package(Threads REQUIRED)
+endif()
 
 # MSVC provides C11 atomics (<stdatomic.h> -> vcruntime_c11_stdatomic.h) only
 # when atomics support is enabled. VS2022 17.5+ (MSVC >= 19.35) enables them
@@ -24,24 +54,34 @@ function(wg14_atomic_waits_enable_c11_atomics target)
   endif()
 endfunction()
 
-set(LIBRARY_SOURCES
-  $<$<AND:$<PLATFORM_ID:Windows>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_windows.c>
-  $<$<AND:$<PLATFORM_ID:Darwin>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_macos.c>
-  $<$<AND:$<PLATFORM_ID:Linux>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_linux.c>
-  $<$<AND:$<PLATFORM_ID:FreeBSD>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_freebsd.c>
-  $<$<OR:$<NOT:$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Darwin>,$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>>,$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>:src/wg14_atomic_waits/atomic_wait_pthreads.c>
-)
+if(SPIN_BACKEND)
+  set(LIBRARY_SOURCES src/wg14_atomic_waits/atomic_wait_spin.c)
+else()
+  set(LIBRARY_SOURCES
+    $<$<AND:$<PLATFORM_ID:Windows>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_windows.c>
+    $<$<AND:$<PLATFORM_ID:Darwin>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_macos.c>
+    $<$<AND:$<PLATFORM_ID:Linux>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_linux.c>
+    $<$<AND:$<PLATFORM_ID:FreeBSD>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:src/wg14_atomic_waits/atomic_wait_freebsd.c>
+    $<$<OR:$<NOT:$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Darwin>,$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>>,$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>:src/wg14_atomic_waits/atomic_wait_pthreads.c>
+  )
+endif()
 
 add_library(${PROJECT_NAME} ${LIBRARY_SOURCES})
 set_target_properties(${PROJECT_NAME} PROPERTIES
   VERSION ${PROJECT_VERSION}
   SOVERSION ${PROJECT_VERSION_MAJOR})
-target_link_libraries(${PROJECT_NAME} PUBLIC $<$<OR:$<NOT:$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Darwin>,$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>>,$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>:pthread>)
-# WaitOnAddress/WakeByAddressSingle/WakeByAddressAll are provided by
-# Synchronization.lib on the Windows SDK. Only the native Windows backend
-# (not the forced-pthreads build) uses them.
-target_link_libraries(${PROJECT_NAME} PUBLIC
-  $<$<AND:$<PLATFORM_ID:Windows>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:Synchronization>)
+if(SPIN_BACKEND_YIELD)
+  # thrd_yield() may live in the platform's separate thread library.
+  target_link_libraries(${PROJECT_NAME} PUBLIC Threads::Threads)
+endif()
+if(NOT SPIN_BACKEND)
+  target_link_libraries(${PROJECT_NAME} PUBLIC $<$<OR:$<NOT:$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Darwin>,$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>>,$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>:pthread>)
+  # WaitOnAddress/WakeByAddressSingle/WakeByAddressAll are provided by
+  # Synchronization.lib on the Windows SDK. Only the native Windows backend
+  # (not the forced-pthreads build) uses them.
+  target_link_libraries(${PROJECT_NAME} PUBLIC
+    $<$<AND:$<PLATFORM_ID:Windows>,$<NOT:$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>>:Synchronization>)
+endif()
 if(HEADER_ONLY_BUILD)
   target_compile_definitions(${PROJECT_NAME} PUBLIC WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY)
 endif()
@@ -51,6 +91,14 @@ endif()
 # compiled-library build it is harmless (the dispatch block is disabled).
 if(ALWAYS_USE_PTHREADS_BACKEND)
   target_compile_definitions(${PROJECT_NAME} PUBLIC WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS)
+endif()
+if(SPIN_BACKEND)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC
+    WG14_ATOMIC_WAITS_USE_SPIN_BACKEND=1)
+endif()
+if(SPIN_BACKEND_YIELD)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC
+    WG14_ATOMIC_WAITS_SPIN_USE_YIELD=1)
 endif()
 if(NO_ATOMIC_WAIT_TIMEOUT)
   target_compile_definitions(${PROJECT_NAME} PUBLIC

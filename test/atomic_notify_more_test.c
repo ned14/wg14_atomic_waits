@@ -65,6 +65,7 @@ static int notify_success_test(void)
   return ret;
 }
 
+#if !WG14_ATOMIC_WAITS_USE_SPIN_BACKEND
 // --- Cap: never wake more than max_threads_to_wake parked waiters ---
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_native_wait_notify_t
 cap_val = 0;
@@ -129,6 +130,8 @@ static int cap_test(void)
   CHECK(atomic_load_explicit(&cap_woke, memory_order_acquire) == CAP_WAITERS);
   return ret;
 }
+
+#endif
 
 // --- Concurrent notifies from multiple threads ---
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_native_wait_notify_t
@@ -201,8 +204,10 @@ int atomic_notify_more_test_main(void)
   int ret = 0;
   SECTION("notify success path and max_threads_to_wake == 0");
   ret += notify_success_test();
+#if !WG14_ATOMIC_WAITS_USE_SPIN_BACKEND
   SECTION("wake cap: never more than max_threads_to_wake");
   ret += cap_test();
+#endif
   SECTION("concurrent notifies from multiple threads");
   ret += concurrent_notify_test();
   return ret;

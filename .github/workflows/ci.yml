@@ -72,6 +72,74 @@ jobs:
       shell: bash
       run: cd build && ctest --output-on-failure --timeout 300 -E benchmark
       
+  Spin:
+    name: Spin backend (${{ matrix.os }}, C${{ matrix.standard }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        standard: [11, 23]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure Spin backend
+      shell: bash
+      run: |
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_STANDARD=${{ matrix.standard }} -DSPIN_BACKEND=ON -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
+
+    - name: Build Spin backend
+      shell: bash
+      run: cd build && cmake --build . --parallel
+
+    - name: Test Spin backend
+      shell: bash
+      run: cd build && ctest --output-on-failure --timeout 300 -E benchmark
+
+  SpinTimed:
+    name: Spin backend + timeouts (Ubuntu C11)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure Spin backend + timeouts
+      shell: bash
+      run: |
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_STANDARD=11 -DHEADER_ONLY_BUILD=ON -DSPIN_BACKEND=ON -DSPIN_BACKEND_TIMEOUTS=ON -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
+
+    - name: Build Spin backend + timeouts
+      shell: bash
+      run: cd build && cmake --build . --parallel
+
+    - name: Test Spin backend + timeouts
+      shell: bash
+      run: cd build && ctest --output-on-failure --timeout 300 -E benchmark
+
+  SpinYield:
+    name: Spin backend + yield (Ubuntu C11)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure Spin backend + yield
+      shell: bash
+      run: |
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_STANDARD=11 -DHEADER_ONLY_BUILD=ON -DSPIN_BACKEND=ON -DSPIN_BACKEND_YIELD=ON -DCMAKE_TOOLCHAIN_FILE=$PWD/../cmake/sanitize-toolchain.cmake
+
+    - name: Build Spin backend + yield
+      shell: bash
+      run: cd build && cmake --build . --parallel
+
+    - name: Test Spin backend + yield
+      shell: bash
+      run: cd build && ctest --output-on-failure --timeout 300 -E benchmark
+
   Windows:
     name: Windows VS2022 (${{ matrix.debug }}, C${{ matrix.standard }}, shared=${{ matrix.shared }})
     runs-on: windows-latest

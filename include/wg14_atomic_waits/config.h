@@ -92,6 +92,22 @@ limitations under the License.
 #define WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS 0
 #endif
 
+// Forces the atomics-only spin backend. It has no kernel or pthread
+// dependency. Finite timeouts use the shared monotonic clock when
+// WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT is not defined; pure-spin builds
+// define it and then reject finite durations.
+#ifndef WG14_ATOMIC_WAITS_USE_SPIN_BACKEND
+#define WG14_ATOMIC_WAITS_USE_SPIN_BACKEND 0
+#endif
+
+// When the spin backend is selected, call thrd_yield() (C) or
+// std::this_thread::yield() (C++) between polls. This reduces CPU
+// monopolisation on implementations which provide C11 threads, but adds a
+// threads dependency.
+#ifndef WG14_ATOMIC_WAITS_SPIN_USE_YIELD
+#define WG14_ATOMIC_WAITS_SPIN_USE_YIELD 0
+#endif
+
 #ifndef WG14_ATOMIC_WAITS_EXTERN_IMPL
 #if defined(WG14_ATOMIC_WAITS_SOURCE) && WG14_ATOMIC_WAITS_SOURCE
 #ifdef _WIN32

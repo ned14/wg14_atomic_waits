@@ -83,7 +83,25 @@ it for you):
 #include <wg14_atomic_waits/atomic_wait.h>
 ```
 
-When using the CMake `-DHEADER_ONLY_BUILD=ON` build this macro is defined for you.
+To use the atomics-only spin backend on a target with no pthreads and no
+kernel wait primitive, define the backend selector and either enable or disable
+finite timeouts:
+
+```c
+#define WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY 1
+#define WG14_ATOMIC_WAITS_USE_SPIN_BACKEND 1
+/* pure spin: no clock dependency, finite timeouts rejected */
+#define WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT 1
+/* optional: call thrd_yield() (C) / std::this_thread::yield() (C++) */
+#define WG14_ATOMIC_WAITS_SPIN_USE_YIELD 1
+#include <wg14_atomic_waits/atomic_wait.h>
+```
+
+Omit `WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT` to implement finite durations;
+the spin loop then uses the shared monotonic clock in addition to the atomics.
+
+When using the CMake `-DHEADER_ONLY_BUILD=ON` build these macros are defined for
+you according to the selected backend.
 
 ### CMake
 
@@ -114,6 +132,9 @@ Relevant CMake options:
 | `BUILD_SHARED_LIBS` | `OFF` | Build a shared library instead of a static one. |
 | `HEADER_ONLY_BUILD` | `OFF` | Header-only "unity" build; defines `WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY`. |
 | `ALWAYS_USE_PTHREADS_BACKEND` | `OFF` | Force the portable pthreads backend on every platform (also in header-only mode, via `WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS`). |
+| `SPIN_BACKEND` | `OFF` | Use the atomics-only spin backend with no pthreads or kernel wait primitive. Defines `WG14_ATOMIC_WAITS_USE_SPIN_BACKEND`. By default it implies `NO_ATOMIC_WAIT_TIMEOUT=ON`. |
+| `SPIN_BACKEND_TIMEOUTS` | `OFF` | With `SPIN_BACKEND`, implement finite durations using the shared monotonic clock instead of rejecting them. Requires `NO_ATOMIC_WAIT_TIMEOUT=OFF`. |
+| `SPIN_BACKEND_YIELD` | `OFF` | With `SPIN_BACKEND`, call `thrd_yield()` in C or `std::this_thread::yield()` in C++ between polls. Requires `<threads.h>` (C), `<thread>` (C++), and the platform thread library when it is separate; defines `WG14_ATOMIC_WAITS_SPIN_USE_YIELD`. |
 | `NO_ATOMIC_WAIT_TIMEOUT` | `OFF` | Omit support for non-zero finite atomic wait durations; defines `__STDC_NO_ATOMIC_WAIT_TIMEOUT__`. |
 | `BUILD_TESTING` | `ON` | Build the test suite (only when this is the top-level project). |
 | `CMAKE_C_STANDARD` | `11` | C standard; C23 (`23`) is also supported. |
@@ -145,6 +166,7 @@ hash-table fallback:
 | Linux | `SYS_futex` | 4 | 1, 2, 8 |
 | FreeBSD | `_umtx_op` | 4, 8 | 1, 2 |
 | Other POSIX | `pthread_cond_wait` / `pthread_cond_signal` | — | 1, 2, 4, 8 |
+| Atomics-only spin (`SPIN_BACKEND`) | `atomic_load_explicit` polling | 1, 2, 4, 8 | — |
 
 Semantics notes:
 
@@ -153,6 +175,13 @@ Semantics notes:
   reference header leaves that standard macro to `<stdatomic.h>`.
 - `atomic_wait_expected` and `atomic_notify` are defined for the native 4-byte
   `uint_native_wait_notify_t` type only.
+- The `SPIN_BACKEND` backend busy-spins on the atomic object and treats notify
+  as a no-op; a spinning waiter observes value changes directly. Its default
+  pure-spin mode has no kernel or pthread dependency and requires
+  `NO_ATOMIC_WAIT_TIMEOUT=ON`. `SPIN_BACKEND_TIMEOUTS=ON` enables finite
+  durations by consulting the shared monotonic clock while spinning.
+  `SPIN_BACKEND_YIELD=ON` additionally calls `thrd_yield()` in C or
+  `std::this_thread::yield()` in C++ between polls to reduce CPU monopolisation.
 - `duration_ns` is a relative interval in nanoseconds measured against an
   implementation-defined monotonic clock, or `STDC_ATOMIC_WAIT_FOREVER` for no
   timeout. `0` performs the initial check and returns a timed-out result if the
@@ -190,6 +219,10 @@ Current CI test targets:
 - Header-only (`-DHEADER_ONLY_BUILD=ON`): all three runners, C11 and C23
   (C17 on MSVC); the header-only + `ALWAYS_USE_PTHREADS_BACKEND` combination is
   additionally run on Linux and macOS at both C11 and C23.
+- Atomics-only spin backend (`-DSPIN_BACKEND=ON`): Ubuntu and macOS, C11 and
+  C23, under AddressSanitizer + UBSan. The header-only
+  `-DSPIN_BACKEND_YIELD=ON` variant is run on Ubuntu C11, and the header-only
+  `-DSPIN_BACKEND_TIMEOUTS=ON` variant is run on Ubuntu C11.
 - ThreadSanitizer: Ubuntu (GCC and clang) and Mac OS (clang), C11 and C23.
 - Fil-C memory-safe compiler: Ubuntu, C11, native and pthreads backends, via
   `cmake/filc-toolchain.cmake`.
