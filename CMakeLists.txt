@@ -6,8 +6,9 @@ set(CMAKE_CXX_VISIBILITY_PRESET "hidden" CACHE STRING "Only make explicitly expo
 set(CMAKE_C_STANDARD "11" CACHE STRING "C standard to use")
 option(HEADER_ONLY_BUILD "Build using header only (unity build)" OFF)
 option(ALWAYS_USE_PTHREADS_BACKEND "Always use pthreads backend" OFF)
+option(NO_ATOMIC_WAIT_TIMEOUT "Disable non-zero finite atomic wait durations" OFF)
 
-project(wg14_atomic_waits VERSION 1.0.0 LANGUAGES C CXX)
+project(wg14_atomic_waits VERSION 2.0.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 enable_testing()
@@ -32,6 +33,9 @@ set(LIBRARY_SOURCES
 )
 
 add_library(${PROJECT_NAME} ${LIBRARY_SOURCES})
+set_target_properties(${PROJECT_NAME} PROPERTIES
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR})
 target_link_libraries(${PROJECT_NAME} PUBLIC $<$<OR:$<NOT:$<OR:$<PLATFORM_ID:Windows>,$<PLATFORM_ID:Darwin>,$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>>,$<BOOL:${ALWAYS_USE_PTHREADS_BACKEND}>>:pthread>)
 # WaitOnAddress/WakeByAddressSingle/WakeByAddressAll are provided by
 # Synchronization.lib on the Windows SDK. Only the native Windows backend
@@ -47,6 +51,10 @@ endif()
 # compiled-library build it is harmless (the dispatch block is disabled).
 if(ALWAYS_USE_PTHREADS_BACKEND)
   target_compile_definitions(${PROJECT_NAME} PUBLIC WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS)
+endif()
+if(NO_ATOMIC_WAIT_TIMEOUT)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC
+    WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT=1)
 endif()
 target_compile_features(${PROJECT_NAME} PRIVATE c_std_11 cxx_std_11)
 wg14_atomic_waits_enable_c11_atomics(${PROJECT_NAME})

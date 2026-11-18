@@ -23,14 +23,15 @@ int wait_expected_leak_test_main(void)
   static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_native_wait_notify_t
   objs[LEAK_N];
   WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) expected = 0;
-  // Negative duration: `atomic_wait_expected` must create the proxy node and
-  // then time out immediately (returning 0 with *expected unchanged).
-  struct timespec d = {.tv_sec = -1, .tv_nsec = 0};
+  // Zero duration: `atomic_wait_expected` must time out immediately (return 0
+  // with *expected unchanged). On the fallback path it must also create and
+  // then release the proxy node.
+  const uint_least64_t d = 0;
   for(int i = 0; i < LEAK_N; i++)
   {
     expected = 0;
     const int r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-    &objs[i], &expected, &d, memory_order_seq_cst, memory_order_seq_cst);
+    &objs[i], &expected, d, memory_order_seq_cst, memory_order_seq_cst);
     CHECK(r == 0);
     CHECK(expected == 0);
   }

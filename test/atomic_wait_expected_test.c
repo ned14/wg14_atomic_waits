@@ -27,7 +27,7 @@ static int waiter_suspend_once(void *arg)
   WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) expected = 0;
   atomic_store_explicit(&g_parked, 1, memory_order_release);
   int r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-  value, &expected, WG14_ATOMIC_WAITS_NULLPTR, memory_order_seq_cst,
+  value, &expected, STDC_ATOMIC_WAIT_FOREVER, memory_order_seq_cst,
   memory_order_seq_cst);
   atomic_store_explicit(&g_result, r, memory_order_release);
   atomic_store_explicit(&g_reloaded, expected, memory_order_release);
@@ -47,7 +47,7 @@ static int waiter_spurious(void *arg)
   WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) expected = 0;
   atomic_store_explicit(&g_sp_parked, 1, memory_order_release);
   int r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-  value, &expected, WG14_ATOMIC_WAITS_NULLPTR, memory_order_seq_cst,
+  value, &expected, STDC_ATOMIC_WAIT_FOREVER, memory_order_seq_cst,
   memory_order_seq_cst);
   atomic_store_explicit(&g_sp_result, r, memory_order_release);
   atomic_store_explicit(&g_sp_reloaded, expected, memory_order_release);
@@ -55,6 +55,7 @@ static int waiter_spurious(void *arg)
   return 0;
 }
 
+#ifndef __STDC_NO_ATOMIC_WAIT_TIMEOUT__
 // --- woken-before-duration for atomic_wait_expected ---
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int g_td_parked = 0;
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int g_td_result = 0;
@@ -66,12 +67,12 @@ static int waiter_timed(void *arg)
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_native_wait_notify_t *value =
   (WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_native_wait_notify_t *) arg;
   WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) expected = 0;
-  struct timespec d = {.tv_sec = 5, .tv_nsec = 0};
+  const uint_least64_t d = 5ull * 1000000000ull;
   atomic_store_explicit(&g_td_parked, 1, memory_order_release);
   struct timespec start, fin;
   timespec_get(&start, TIME_UTC);
   int r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-  value, &expected, &d, memory_order_seq_cst, memory_order_seq_cst);
+  value, &expected, d, memory_order_seq_cst, memory_order_seq_cst);
   timespec_get(&fin, TIME_UTC);
   atomic_store_explicit(&g_td_result, r, memory_order_release);
   atomic_store_explicit(&g_td_reloaded, expected, memory_order_release);
@@ -97,6 +98,8 @@ static int spurious_notifier(void *arg)
   return 0;
 }
 
+#endif /* __STDC_NO_ATOMIC_WAIT_TIMEOUT__ */
+
 // --- distinct memory_order success/failure contract (item 1) ---
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int g_o_parked = 0;
 static WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_int g_o_returned = 0;
@@ -110,7 +113,7 @@ static int waiter_orders(void *arg)
   WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) expected = 0;
   atomic_store_explicit(&g_o_parked, 1, memory_order_release);
   int r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-  value, &expected, WG14_ATOMIC_WAITS_NULLPTR, memory_order_acquire,
+  value, &expected, STDC_ATOMIC_WAIT_FOREVER, memory_order_acquire,
   memory_order_relaxed);
   atomic_store_explicit(&g_o_result, r, memory_order_release);
   atomic_store_explicit(&g_o_reloaded, expected, memory_order_release);
@@ -131,7 +134,7 @@ static int hb_waiter(void *arg)
   WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) expected = 0;
   atomic_store_explicit(&g_hb_parked, 1, memory_order_release);
   WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-  &g_hb_val, &expected, WG14_ATOMIC_WAITS_NULLPTR, memory_order_acquire,
+  &g_hb_val, &expected, STDC_ATOMIC_WAIT_FOREVER, memory_order_acquire,
   memory_order_relaxed);
   // Evaluate the happens-before edge: side effects sequenced before the
   // notifying release-store must be visible to the woken reader.
@@ -163,31 +166,32 @@ int atomic_wait_expected_test_main(void)
   SECTION("immediate mismatch (no suspension)");
   expected = 1;
   int r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-  &value, &expected, WG14_ATOMIC_WAITS_NULLPTR, memory_order_seq_cst,
+  &value, &expected, STDC_ATOMIC_WAIT_FOREVER, memory_order_seq_cst,
   memory_order_seq_cst);
   CHECK(r == 0);
   CHECK(expected == 0);
 
   // Wait with zero timeout, should always time out (no suspension)
   SECTION("zero timeout (no suspension)");
-  struct timespec dur = {.tv_sec = 0, .tv_nsec = 0};
+  const uint_least64_t dur = 0;
   expected = 0;
   r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-  &value, &expected, &dur, memory_order_seq_cst, memory_order_seq_cst);
+  &value, &expected, dur, memory_order_seq_cst, memory_order_seq_cst);
   CHECK(r == 0);
   CHECK(expected == 0);
 
+#ifndef __STDC_NO_ATOMIC_WAIT_TIMEOUT__
   // Real (non-zero) duration with no notify: must suspend, wait for the full
   // duration (ceiling), then return 0 on timeout with *expected unchanged.
   SECTION("full-duration timeout (50ms)");
   {
     const unsigned timeout_ms = 50;
-    struct timespec start, fin, d = {.tv_sec = 0, .tv_nsec = 0};
-    d.tv_nsec = (long) timeout_ms * 1000000L;
+    struct timespec start, fin;
+    const uint_least64_t d = (uint_least64_t) timeout_ms * 1000000ull;
     expected = 0;
     timespec_get(&start, TIME_UTC);
     r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-    &value, &expected, &d, memory_order_seq_cst, memory_order_seq_cst);
+    &value, &expected, d, memory_order_seq_cst, memory_order_seq_cst);
     timespec_get(&fin, TIME_UTC);
     CHECK(r == 0);
     CHECK(expected == 0);
@@ -200,11 +204,12 @@ int atomic_wait_expected_test_main(void)
   // UINT32_MAX-ns cap-and-loop and severity conversion paths on macOS.
   SECTION("multi-second duration (1.25s)");
   {
-    struct timespec start, fin, d = {.tv_sec = 1, .tv_nsec = 250000000L};
+    struct timespec start, fin;
+    const uint_least64_t d = 1250000000ull;
     expected = 0;
     timespec_get(&start, TIME_UTC);
     r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-    &value, &expected, &d, memory_order_seq_cst, memory_order_seq_cst);
+    &value, &expected, d, memory_order_seq_cst, memory_order_seq_cst);
     timespec_get(&fin, TIME_UTC);
     CHECK(r == 0);
     CHECK(expected == 0);
@@ -212,16 +217,16 @@ int atomic_wait_expected_test_main(void)
                                     (fin.tv_nsec - start.tv_nsec) / 1000000L);
     CHECK(elapsed_ms >= 1250L);
   }
+#endif /* __STDC_NO_ATOMIC_WAIT_TIMEOUT__ */
 
-  // Negative duration: the implementation treats it as an immediate timeout
-  // (returns 0 with *expected unchanged) rather than as an error. The proposal
-  // leaves the error contract open; we verify the sane no-crash behaviour.
-  SECTION("negative duration");
+  // Infinite duration with an immediate mismatch: it must return without
+  // blocking and reload *expected.
+  SECTION("infinite duration (immediate mismatch)");
   {
-    struct timespec d = {.tv_sec = -1, .tv_nsec = 0};
-    expected = 0;
+    expected = 1;
     r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-    &value, &expected, &d, memory_order_seq_cst, memory_order_seq_cst);
+    &value, &expected, STDC_ATOMIC_WAIT_FOREVER, memory_order_seq_cst,
+    memory_order_seq_cst);
     CHECK(r == 0);
     CHECK(expected == 0);
   }
@@ -280,6 +285,7 @@ int atomic_wait_expected_test_main(void)
   CHECK(atomic_load_explicit(&g_sp_result, memory_order_acquire) > 0);
   CHECK(atomic_load_explicit(&g_sp_reloaded, memory_order_acquire) == 9);
 
+#ifndef __STDC_NO_ATOMIC_WAIT_TIMEOUT__
   // Woken before the duration elapses: must return promptly (not at timeout)
   // with a positive result and *expected reloaded.
   SECTION("woken before duration");
@@ -314,15 +320,15 @@ int atomic_wait_expected_test_main(void)
   // unchanged.
   SECTION("accumulated timeout (spurious notifier)");
   {
-    struct timespec start, fin, d = {.tv_sec = 0, .tv_nsec = 0};
-    d.tv_nsec = 150000000L;
+    struct timespec start, fin;
+    const uint_least64_t d = 150000000ull;
     atomic_store_explicit(&value, 0, memory_order_seq_cst);
     thrd_t notifier;
     CHECK(thrd_create(&notifier, spurious_notifier, &value) == thrd_success);
     expected = 0;
     timespec_get(&start, TIME_UTC);
     r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-    &value, &expected, &d, memory_order_seq_cst, memory_order_seq_cst);
+    &value, &expected, d, memory_order_seq_cst, memory_order_seq_cst);
     timespec_get(&fin, TIME_UTC);
     thrd_join(notifier, &wr);
     CHECK(r == 0);
@@ -331,6 +337,7 @@ int atomic_wait_expected_test_main(void)
                                     (fin.tv_nsec - start.tv_nsec) / 1000000L);
     CHECK(elapsed_ms >= 150L);
   }
+#endif /* __STDC_NO_ATOMIC_WAIT_TIMEOUT__ */
 
   // CAS failure returns 0 and *expected is updated to the observed value.
   SECTION("atomic_notify CAS failure");
@@ -354,16 +361,16 @@ int atomic_wait_expected_test_main(void)
     atomic_store_explicit(&value, 0, memory_order_seq_cst);
     expected = 5;  // mismatch -> no suspension, returns 0, *expected reloaded
     r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-    &value, &expected, WG14_ATOMIC_WAITS_NULLPTR, memory_order_acquire,
+    &value, &expected, STDC_ATOMIC_WAIT_FOREVER, memory_order_acquire,
     memory_order_relaxed);
     CHECK(r == 0);
     CHECK(expected == 0);
 
     atomic_store_explicit(&value, 0, memory_order_seq_cst);
     expected = 0;
-    struct timespec zd = {.tv_sec = 0, .tv_nsec = 0};
+    const uint_least64_t zd = 0;
     r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-    &value, &expected, &zd, memory_order_relaxed, memory_order_seq_cst);
+    &value, &expected, zd, memory_order_relaxed, memory_order_seq_cst);
     CHECK(r == 0);
     CHECK(expected == 0);
 
@@ -420,11 +427,11 @@ int atomic_wait_expected_test_main(void)
   // non-positive (0) without crashing and leave *expected unchanged.
   SECTION("corner semantics");
   {
-    struct timespec dec = {.tv_sec = -1, .tv_nsec = 0};
+    const uint_least64_t dec = 0;
     atomic_store_explicit(&value, 0, memory_order_seq_cst);
     expected = 0;
     r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-    &value, &expected, &dec, memory_order_seq_cst, memory_order_seq_cst);
+    &value, &expected, dec, memory_order_seq_cst, memory_order_seq_cst);
     CHECK(r == 0);
     CHECK(expected == 0);
   }

@@ -53,40 +53,51 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
-  uint_least32_t expected, const struct timespec *duration)
+  uint_least32_t expected, const uint_least64_t *timeout_ns)
   {
     int save_errno = errno;
     int ret;
-    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
-    {
-      struct _umtx_time umtx_time;
-      memset(&umtx_time, 0, sizeof(umtx_time));
-      // The shared implementation passes a relative remaining duration. Leave
-      // the UMTX_ABSTIME flag clear so the kernel converts _timeout to an
-      // absolute deadline itself, and set _clockid to CLOCK_MONOTONIC so that
-      // conversion is measured against the same monotonic clock the shared
-      // code uses for its own deadline tracking (the kernel defaults the
-      // clock to CLOCK_REALTIME when it is not supplied, which would disagree
-      // with that tracking).
-      umtx_time._clockid = CLOCK_MONOTONIC;
-      umtx_time._flags = 0;
-      umtx_time._timeout = *duration;
-      // For the WAIT ops the kernel uses uaddr1 (the 4th argument) as the size
-      // of the struct pointed to by uaddr2 (the 5th argument): a size no
-      // larger than struct timespec copies just a relative timespec, a larger
-      // size copies the full _umtx_time including _clockid/_flags. uaddr2 ==
-      // NULL means an infinite wait, so it must be non-NULL when a timeout is
-      // supplied.
-      ret = _umtx_op((void *) (uintptr_t) object, UMTX_OP_WAIT_UINT, expected,
-                     (void *) (uintptr_t) sizeof(umtx_time), &umtx_time);
-    }
-    else
-    {
-      // A NULL uaddr2 means an infinite wait (passing a zeroed _umtx_time
-      // would instead mean "relative timeout of zero" and return immediately).
-      ret =
-      _umtx_op((void *) (uintptr_t) object, UMTX_OP_WAIT_UINT, expected, 0, 0);
-    }
+#if WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+    (void) timeout_ns;
+    // A NULL uaddr2 means an infinite wait (passing a zeroed _umtx_time would
+    // instead mean "relative timeout of zero" and return immediately).
+    ret =
+    _umtx_op((void *) (uintptr_t) object, UMTX_OP_WAIT_UINT, expected, 0, 0);
+#else
+  if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
+  {
+    struct _umtx_time umtx_time;
+    memset(&umtx_time, 0, sizeof(umtx_time));
+    // The shared implementation passes a relative remaining timeout. Leave
+    // the UMTX_ABSTIME flag clear so the kernel converts _timeout to an
+    // absolute deadline itself, and set _clockid to CLOCK_MONOTONIC so that
+    // conversion is measured against the same monotonic clock the shared
+    // code uses for its own deadline tracking (the kernel defaults the
+    // clock to CLOCK_REALTIME when it is not supplied, which would disagree
+    // with that tracking).
+    const uint_least64_t secs = *timeout_ns / 1000000000ull;
+    umtx_time._clockid = CLOCK_MONOTONIC;
+    umtx_time._flags = 0;
+    umtx_time._timeout.tv_sec =
+    (time_t) ((secs > 0x7FFFFFFFull) ? 0x7FFFFFFFull : secs);
+    umtx_time._timeout.tv_nsec = (long) (*timeout_ns % 1000000000ull);
+    // For the WAIT ops the kernel uses uaddr1 (the 4th argument) as the size
+    // of the struct pointed to by uaddr2 (the 5th argument): a size no
+    // larger than struct timespec copies just a relative timespec, a larger
+    // size copies the full _umtx_time including _clockid/_flags. uaddr2 ==
+    // NULL means an infinite wait, so it must be non-NULL when a timeout is
+    // supplied.
+    ret = _umtx_op((void *) (uintptr_t) object, UMTX_OP_WAIT_UINT, expected,
+                   (void *) (uintptr_t) sizeof(umtx_time), &umtx_time);
+  }
+  else
+  {
+    // A NULL uaddr2 means an infinite wait (passing a zeroed _umtx_time
+    // would instead mean "relative timeout of zero" and return immediately).
+    ret =
+    _umtx_op((void *) (uintptr_t) object, UMTX_OP_WAIT_UINT, expected, 0, 0);
+  }
+#endif
     if(ret == 0)
     {
       errno = save_errno;
@@ -102,28 +113,37 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address64)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
-  uint_least64_t expected, const struct timespec *duration)
+  uint_least64_t expected, const uint_least64_t *timeout_ns)
   {
     int save_errno = errno;
     int ret;
-    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
-    {
-      struct _umtx_time umtx_time;
-      memset(&umtx_time, 0, sizeof(umtx_time));
-      // Relative remaining duration on CLOCK_MONOTONIC; see wait_on_address32
-      // for the UMTX_ABSTIME/_clockid reasoning and the uaddr1/uaddr2 layout.
-      umtx_time._clockid = CLOCK_MONOTONIC;
-      umtx_time._flags = 0;
-      umtx_time._timeout = *duration;
-      ret = _umtx_op((void *) (uintptr_t) object, UMTX_OP_WAIT, (long) expected,
-                     (void *) (uintptr_t) sizeof(umtx_time), &umtx_time);
-    }
-    else
-    {
-      // A NULL uaddr2 means an infinite wait; see wait_on_address32.
-      ret = _umtx_op((void *) (uintptr_t) object, UMTX_OP_WAIT, (long) expected,
-                     0, 0);
-    }
+#if WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+    (void) timeout_ns;
+    ret =
+    _umtx_op((void *) (uintptr_t) object, UMTX_OP_WAIT, (long) expected, 0, 0);
+#else
+  if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
+  {
+    struct _umtx_time umtx_time;
+    memset(&umtx_time, 0, sizeof(umtx_time));
+    // Relative remaining timeout on CLOCK_MONOTONIC; see wait_on_address32
+    // for the UMTX_ABSTIME/_clockid reasoning and the uaddr1/uaddr2 layout.
+    const uint_least64_t secs = *timeout_ns / 1000000000ull;
+    umtx_time._clockid = CLOCK_MONOTONIC;
+    umtx_time._flags = 0;
+    umtx_time._timeout.tv_sec =
+    (time_t) ((secs > 0x7FFFFFFFull) ? 0x7FFFFFFFull : secs);
+    umtx_time._timeout.tv_nsec = (long) (*timeout_ns % 1000000000ull);
+    ret = _umtx_op((void *) (uintptr_t) object, UMTX_OP_WAIT, (long) expected,
+                   (void *) (uintptr_t) sizeof(umtx_time), &umtx_time);
+  }
+  else
+  {
+    // A NULL uaddr2 means an infinite wait; see wait_on_address32.
+    ret =
+    _umtx_op((void *) (uintptr_t) object, UMTX_OP_WAIT, (long) expected, 0, 0);
+  }
+#endif
     if(ret == 0)
     {
       errno = save_errno;

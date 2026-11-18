@@ -9,7 +9,7 @@ on today's code, caveats).
 Verdicts in the mapping table:
 
 | Item | Verdict | Test ref |
-| 1.4 Store/exchange wakeups absent on fallback | Not testable portably (advisory; backend-dependent) | — |
+| 1.4 Store/exchange race vs parked wake | Clarified in wording; no negative store-wake assertion | — |
 | 1.10 `atomic_notify(max=0)` no-op | **Testable**, but expectation encodes ambiguous wording | A1.10 |
 | §2 under-specified bullets | No exposure tests (characterization only) | D |
 | §3 CI gaps | Not unit tests — CI additions (one doubles as A1.5) | E |
@@ -49,12 +49,13 @@ add both variants.
 
 ## C. Not testable — document, don't chase
 
-- **1.4 Store/exchange wakeups on the fallback path.** A bare store waking a
-  parked waiter is backend-dependent (Windows `WaitOnAddress` wakes on a write;
-  the POSIX futex/ulock paths do not), NOTE 1 is advisory, and the proposal
-  imposes no "store must not wake" nor "store must wake" requirement. A portable
-  positive or negative assertion is impossible. Existing B4 guidance below
-  stands: make no store-wake assertion.
+- **1.4 Store/exchange race on the fallback path.** A bare store or exchange can
+  be observed by a waiter in its load/recheck/park window and end the wait without
+  a notify. It cannot reliably unblock an already-parked waiter; that requires the
+  store to make the waiter eligible and a subsequent notify to unblock it. Windows
+  `WaitOnAddress` may also report the store as a spurious wake; the POSIX futex/ulock
+  paths do not. Portable tests therefore make no negative store-wake assertion and
+  assert notify-driven wakes only.
 
 ---
 
@@ -69,7 +70,7 @@ add both variants.
   No test.
 - **`atomic_notify` under-reporting the woken count.** Compliant with "at least";
   no test.
-- **Store-triggered wakeup / native lost-wake-before-park.** Already covered by
+- **Store observation before park / native lost-wake-before-park.** Already covered by
   `notify_before_park_test` and `lost_wake_stress_test` in
   `atomic_wait_more_test.c`. No new test.
 - **`max_threads_to_wake > 1` wake-all degeneracy.** Documented in
@@ -100,11 +101,12 @@ add both variants.
 Per `combined-analysis.md` §1.4/§4, these are deliberately NOT asserted as
 positive tests, and a future reviewer should not "complete" them naively:
 
-- **Store-triggered wake**: `atomic_wait` may return after a value-changing store on any
-  backend (a waiter in its load/re-check/park window observes the new value, and Windows
-  native wakes every parked waiter). Proposal NOTE 1 is advisory. The suite therefore makes
-  **no** negative "store does not wake" assertion; it only asserts notify-driven
-  wake counts.
+- **Store observation before park**: a waiter in its load/re-check/park window can
+  observe a value-changing store before it parks, and Windows `WaitOnAddress` can
+  report a store as a spurious wake. The wording's NOTE 2 permits the former but does
+  not require a store to unblock an already-parked waiter; a modify-plus-notify is
+  still required for that. The suite therefore makes **no** negative "store does not
+  wake" assertion and asserts notify-driven wake counts only.
 - **Negative `atomic_wait_expected` return**: only reachable on a genuine backend
   failure (wait_on_address hard error / hash-table allocation failure), not
   deterministically triggerable by a portable unit test. The suite asserts `0` on a

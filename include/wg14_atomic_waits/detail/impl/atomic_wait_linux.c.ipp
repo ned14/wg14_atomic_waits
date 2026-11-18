@@ -30,7 +30,9 @@ limitations under the License.
 #include <limits.h>
 #include <linux/futex.h>
 #include <sys/syscall.h>
+#if !WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
 #include <time.h>
+#endif
 #include <unistd.h>
 
 #ifdef __cplusplus
@@ -43,10 +45,10 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
-  uint_least32_t expected, const struct timespec *duration)
+  uint_least32_t expected, const uint_least64_t *timeout_ns)
   {
     int save_errno = errno;
-    // The shared implementation passes a relative remaining duration (NULL for
+    // The shared implementation passes a relative remaining timeout (NULL for
     // an infinite wait), but the futex wait operations only accept an absolute
     // CLOCK_MONOTONIC deadline. Convert the relative duration to an absolute
     // one here, otherwise a small relative value would be interpreted as a
@@ -60,28 +62,47 @@ extern "C"
     // pthread_cond_timedwait) arms the hrtimer correctly. With
     // FUTEX_BITSET_MATCH_ANY it is semantically identical to FUTEX_WAIT.
     int ret;
-    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+#if WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+    (void) timeout_ns;
+    ret =
+    (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT_BITSET,
+                  (int) expected, NULL, NULL, FUTEX_BITSET_MATCH_ANY);
+#else
+  if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
+  {
+    struct timespec now;
+    struct timespec abstime;
+    (void) clock_gettime(CLOCK_MONOTONIC, &now);
+    uint_least64_t ns =
+    (uint_least64_t) now.tv_sec * 1000000000ull + (uint_least64_t) now.tv_nsec;
+    if(*timeout_ns > UINT_LEAST64_MAX - ns)
     {
-      struct timespec now;
-      struct timespec abstime;
-      (void) clock_gettime(CLOCK_MONOTONIC, &now);
-      abstime.tv_sec = now.tv_sec + duration->tv_sec;
-      abstime.tv_nsec = now.tv_nsec + duration->tv_nsec;
-      if(abstime.tv_nsec >= 1000000000L)
-      {
-        abstime.tv_sec++;
-        abstime.tv_nsec -= 1000000000L;
-      }
-      ret =
-      (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT_BITSET,
-                    (int) expected, &abstime, NULL, FUTEX_BITSET_MATCH_ANY);
+      ns = UINT_LEAST64_MAX;
     }
     else
     {
-      ret =
-      (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT_BITSET,
-                    (int) expected, NULL, NULL, FUTEX_BITSET_MATCH_ANY);
+      ns += *timeout_ns;
     }
+    // Clamp to a conservative signed-32-bit time_t range so the conversion
+    // is safe even on 32-bit targets. Longer waits simply re-park.
+    uint_least64_t secs = ns / 1000000000ull;
+    if(secs > 0x7FFFFFFFull)
+    {
+      secs = 0x7FFFFFFFull;
+    }
+    abstime.tv_sec = (time_t) secs;
+    abstime.tv_nsec = (long) (ns % 1000000000ull);
+    ret =
+    (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT_BITSET,
+                  (int) expected, &abstime, NULL, FUTEX_BITSET_MATCH_ANY);
+  }
+  else
+  {
+    ret =
+    (int) syscall(SYS_futex, (int *) (uintptr_t) object, FUTEX_WAIT_BITSET,
+                  (int) expected, NULL, NULL, FUTEX_BITSET_MATCH_ANY);
+  }
+#endif
     if(ret == 0)
     {
       errno = save_errno;

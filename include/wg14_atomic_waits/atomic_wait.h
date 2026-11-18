@@ -47,12 +47,15 @@ limitations under the License.
  *    process-shared primitive if you need it.
  *
  *  \section timeout_semantics Timeout semantics
- *  The \c duration argument of \c atomic_wait_expected is a \e relative
- *  remaining interval measured against a monotonic clock, or \c NULL for an
- *  infinite wait. Backends whose kernel primitive requires an absolute
- *  deadline (Linux \c FUTEX_WAIT_BITSET, FreeBSD \c _umtx_op without
- *  \c UMTX_ABSTIME) convert the relative interval internally, so all backends
- *  agree on the relative contract.
+ *  The \c duration_ns argument of \c atomic_wait_expected is a \e relative
+ *  interval in nanoseconds measured against an implementation-defined
+ *  monotonic clock, or \c STDC_ATOMIC_WAIT_FOREVER for an unbounded wait.
+ *  A duration of zero performs the initial comparison and returns a
+ *  timed-out result if the value still matches. Implementations that define
+ *  \c __STDC_NO_ATOMIC_WAIT_TIMEOUT__ need not support durations other than
+ *  zero and \c STDC_ATOMIC_WAIT_FOREVER; such calls return a negative value.
+ *  Backends convert the nanosecond interval to their native representation
+ *  internally, so all backends agree on the relative contract.
  */
 
 #ifndef WG14_ATOMIC_WAITS_ATOMIC_WAIT_H
@@ -60,8 +63,11 @@ limitations under the License.
 
 #include "config.h"
 
-#include <stdint.h>  // for uint_least32_t
-#include <time.h>    // for struct timespec
+#include <stdint.h>  // for uint_least32_t, uint_least64_t, UINT_LEAST64_MAX
+
+#ifndef STDC_ATOMIC_WAIT_FOREVER
+#define STDC_ATOMIC_WAIT_FOREVER UINT_LEAST64_MAX
+#endif
 
 #ifdef __cplusplus
 #include <atomic>
@@ -126,8 +132,7 @@ extern "C"
   WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected_32)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t
   *__restrict object,
-  uint_least32_t *__restrict expected,
-  const struct timespec *__restrict duration,
+  uint_least32_t *__restrict expected, uint_least64_t duration_ns,
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order success,
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order failure);
 
@@ -327,56 +332,59 @@ namespace wg14_atomic_waits
   }))
 #endif
 
-//! Wait up to `duration` for `*object` to no longer equal `*expected`.
+//! Wait up to `duration_ns` nanoseconds for `*object` to no longer equal
+//! `*expected`.
 /*! \details
     `sizeof(*object)` must equal `sizeof(uint_native_wait_notify_t)`.
     If `*object` does not equal `*expected`, returns immediately. Otherwise
-    suspends the thread until notified or until `duration` passes. On wake,
+    suspends the thread until notified or until `duration_ns` passes. On wake,
     re-compares; if still equal, parks again. Total accumulated wait is at
-    least `*duration`. On return, `*expected` is updated to the most recently
-    loaded value.
-    `duration` is a relative remaining interval measured against a monotonic
-    clock, or `NULL` for no timeout. Every backend implements it as a
-    relative duration: macOS and Windows consume it directly, Linux converts
-    it to an absolute CLOCK_MONOTONIC deadline for `FUTEX_WAIT_BITSET`, FreeBSD
-    leaves the `UMTX_ABSTIME` flag clear (making the kernel treat it as
-    relative), and the pthreads backend converts it to an absolute
-    `pthread_cond_timedwait` deadline internally.
+    least `duration_ns` nanoseconds. On return, `*expected` is updated to the
+    most recently loaded value.
+    `duration_ns` is a relative interval in nanoseconds measured against an
+    implementation-defined monotonic clock. `STDC_ATOMIC_WAIT_FOREVER` waits
+    without a time limit. A duration of zero performs the initial comparison
+    and returns a timed-out result if the value still matches.
+    If the implementation defines `__STDC_NO_ATOMIC_WAIT_TIMEOUT__`, durations
+    other than zero and `STDC_ATOMIC_WAIT_FOREVER` are not supported and the
+    function returns a negative value. Every backend converts the nanosecond
+    interval to its native representation internally.
     \param object Pointer to a `volatile _Atomic uint_least32_t`.
     \param expected Pointer to value to compare against; updated on return.
-    \param duration Maximum time to wait, or `NULL` for no timeout.
+    \param duration_ns Maximum time to wait in nanoseconds, or
+    `STDC_ATOMIC_WAIT_FOREVER` for no timeout.
     \param success Memory order when the wait ends with value != `*expected`.
     \param failure Memory order on timeout or early mismatch.
     \return Zero if no suspension or timeout; positive if suspended at least
    once; negative on error.
     \retval 0 No suspension occurred, or duration timeout.
     \retval >0 Thread was suspended at least once.
-    \retval <0 Error.
+    \retval <0 Error, including an unsupported finite duration.
 */
-#define atomic_wait_expected(object, expected, duration, success, failure)     \
+#define atomic_wait_expected(object, expected, duration_ns, success, failure)  \
   (                                                                            \
   _WG14_ATOMIC_WAITS_IMPL_atomic_native_check(object),                         \
   WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected_32)(                           \
   (const volatile WG14_ATOMIC_WAITS_PREFIX(                                    \
   atomic_uint_native_wait_notify_t) *) (object),                               \
   (WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) *) (expected),          \
-  (duration), (success), (failure)))
+  (uint_least64_t) (duration_ns), (success), (failure)))
 
 //! Atomically compare-exchange and notify up to `max_threads_to_wake` waiters.
 /*! \details
     `sizeof(*object)` must equal `sizeof(uint_native_wait_notify_t)`.
     Performs `atomic_compare_exchange_strong_explicit`. If `*object` still
     equals `*expected`, replaces it with `desired` and wakes up to
-    `max_threads_to_wake` waiting threads. On some platforms the return
-    value may be 1 plus the number of threads woken.
+    `max_threads_to_wake` waiting threads. If the number of threads woken
+    is known, the recommended return value is one plus that number.
     \param object Pointer to a `volatile _Atomic uint_least32_t`.
     \param expected Pointer to value compared against; updated on failure.
     \param desired Value to store on successful exchange.
     \param max_threads_to_wake Maximum number of waiters to wake.
     \param success Memory order on success.
     \param failure Memory order on failure.
-    \return Positive (1 + woken count) on successful exchange; zero on failure;
-   negative on error.
+    \return Positive (recommended 1 + woken count) on successful exchange; zero
+   on failure; negative on error.
     \retval >0 Successful exchange and notify.
     \retval 0 Compare-exchange failed.
     \retval <0 Error.

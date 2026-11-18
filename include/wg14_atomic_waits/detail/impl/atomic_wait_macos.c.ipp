@@ -53,14 +53,14 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
-  uint_least32_t expected, const struct timespec *ts)
+  uint_least32_t expected, const uint_least64_t *timeout_ns)
   {
     int save_errno = errno;
     uint32_t timeout_us = 0;
-    if(ts != WG14_ATOMIC_WAITS_NULLPTR)
+    if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
     {
-      uint64_t us = ((uint64_t) ts->tv_sec) * 1000000ull +
-                    (((uint64_t) ts->tv_nsec) + 999ull) / 1000ull;
+      const uint_least64_t us =
+      *timeout_ns / 1000ull + ((*timeout_ns % 1000ull) != 0ull);
       timeout_us = (us > UINT32_MAX) ? UINT32_MAX : (uint32_t) us;
       if(timeout_us == 0)
       {
@@ -87,14 +87,14 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address64)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
-  uint_least64_t expected, const struct timespec *ts)
+  uint_least64_t expected, const uint_least64_t *timeout_ns)
   {
     int save_errno = errno;
     uint32_t timeout_us = 0;
-    if(ts != WG14_ATOMIC_WAITS_NULLPTR)
+    if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
     {
-      uint64_t us = ((uint64_t) ts->tv_sec) * 1000000ull +
-                    (((uint64_t) ts->tv_nsec) + 999ull) / 1000ull;
+      const uint_least64_t us =
+      *timeout_ns / 1000ull + ((*timeout_ns % 1000ull) != 0ull);
       timeout_us = (us > UINT32_MAX) ? UINT32_MAX : (uint32_t) us;
       if(timeout_us == 0)
       {

@@ -78,13 +78,12 @@ This file is a list of open action items.
   be written faithfully without deciding. Either state it ("as if by
   atomic_load_explicit(object, success)") or state that it is unspecified which load
   ordering is used for the checks.
-- [ ] **W12 Order restrictions not stated.** `atomic_wait_explicit`'s *order* should
-  inherit the load restriction (shall not be memory_order_release nor
-  memory_order_acq_rel), and *success*/*failure* in `atomic_wait_expected` and
-  `atomic_notify` should inherit the compare-exchange restrictions (failure not release
-  nor acq_rel; failure not stronger than success). They are currently inherited only
-  implicitly through the as-if formulations. Decide whether to restate them explicitly
-  (recommended for atomic_wait_explicit, which has no as-if CAS to lean on).
+- [x] **W12 Order restrictions.** `atomic_wait_explicit`'s *order* is restricted to load
+  orders. In `atomic_wait_expected`, *success* and *failure* are both load orders, so only
+  release/acq_rel are prohibited; there is no failure-versus-success strength restriction
+  because they govern separate loads. `atomic_notify` retains the compare-exchange
+  restrictions (failure not release nor acq_rel; failure not stronger than success).
+  The restrictions are now stated explicitly in the proposed wording.
 - [ ] **W13 Negative returns are unspecified.** "If the request could not be honored"
   is borrowed from cnd_signal/cnd_broadcast, but nothing defines *when* the request
   cannot be honored (resource exhaustion? signal interruption? no thread support?). At
@@ -108,10 +107,10 @@ This file is a list of open action items.
   (__STDC_NO_THREADS__; freestanding). Waiting/blocking presumes multiple threads;
   state the behaviour when the execution environment does not support threads
   (negative return? undefined?). Also decide freestanding status of the new functions.
-- [ ] **W17 Positive return values unconstrained.** The positive return of
-  `atomic_wait_expected` and the count returned by `atomic_notify` have no stated range
-  or meaning beyond sign. Fine, but consider "returns an implementation-defined positive
-  value" to stop readers inferring a documented encoding.
+- [x] **W17 Positive return values.** `atomic_wait_expected` returns an
+  implementation-defined positive value, as before. `atomic_notify` now has a
+  Recommended practice: when the number of threads unblocked is known, return one plus
+  that number; otherwise the positive value remains implementation-defined.
 - [ ] **W18 `atomic_notify` with max_threads_to_wake == 0.** As worded, a successful
   exchange still occurs and the function returns positive even though it trivially
   "unblocks at least 0" waiters; the implementation short-circuits before the CAS and
@@ -138,20 +137,20 @@ This file is a list of open action items.
 
 ## 1. Deviations from the proposal
 
-### 1.4 (Medium) Store/exchange wakeups (NOTE 1) not implemented on the fallback path
+### 1.4 (Clarified) Store/exchange race versus parked-waiter wakeup
 
-**Proposal basis:** §7.17.7.7 / §7.17.7.10 NOTE 1: "a wakeup is possibly triggered by
-either a notifying operation or by an atomic store or exchange."
+**Proposal basis:** A bare atomic store or exchange can be observed by a waiter in its
+load/recheck/park window and cause the wait to return without a notify. It is not
+sufficient to reliably unblock a thread that is already parked; that requires the store
+to make the waiter eligible and a subsequent notifying operation to unblock it. The old
+NOTE implied the stronger, incorrect claim that a store alone could wake a parked waiter.
+NOTE 2 now states the race-window observation and the parked-waiter requirement.
 
-**Implementation:** on the hash-table fallback path the waiter parks on the *proxy*
-object, not the user's atomic. A plain `atomic_store` on the user object never signals
-the proxy, so a store alone cannot unblock a genuinely-sleeping fallback waiter; with
-1.1's re-check the store is not observed either. So the "wakeup triggered by a store"
-behaviour is effectively absent on this path. (Treating NOTE 1 as advisory softens this
-to an under-specification — see §2.)
+**Implementation:** the fallback path's proxy-based parking requires a notify to unblock
+an already-parked waiter, which is consistent with NOTE 2. The race window is covered by
+the existing recheck logic.
 
-→ **Action item:** either implement store-triggered wakeups on the fallback path or
-record that NOTE 1 (now "A wakeup **can** be triggered by ...") is advisory and close.
+→ **Resolved by the clarified wording.**
 
 ### 1.10 (Low) `atomic_notify` with `max_threads_to_wake == 0` returns 0 without performing the exchange
 
@@ -236,8 +235,9 @@ code".
 Still deliberately uncovered / noted (advisory behaviour, or not deterministically
 triggerable by a portable unit test):
 
-- **Store-alone wake-up** (proposal NOTE 1 is advisory): a bare value store does **not**
-  wake a fully-parked waiter on the non-Windows compute-and-wait backends (see §1.4).
+- **Store-alone wake-up of a parked waiter** is not required (see §1.4); a store can
+  still be observed in the waiter's recheck window. Tests assert notify-driven wakes only
+  and make no negative store-wakeup assertion.
 - **Strict notify cap > 1** is not assertable on macOS/Windows/pthreads (any `max > 1`
   degenerates to wake-all). Likewise, a genuinely-negative `atomic_wait_expected` return
   is only produced on a backend synchronization failure that a portable unit test cannot
@@ -253,7 +253,7 @@ triggerable by a portable unit test):
 | # | Item | Severity | Where |
 |---|------|----------|-------|
 | W11 | Initial load order in `atomic_wait_expected` unspecified | High (implementability) | 7.17.7.10 |
-| W12 | Order restrictions not restated (load orders, success/failure constraints) | Medium | 7.17.7.7/10/11 |
+| W12 | Order restrictions now stated (separate-load rules for wait_expected) | Resolved | 7.17.7.7/10/11 |
 | W13 | Negative-return conditions unspecified | High (implementability) | 7.17.7.10/11 Returns |
 | W14 | Timeout clock basis and accumulation semantics unspecified | High (implementability) | 7.17.7.10 |
 | W15 | Applicable A/C types unstated | Medium | 7.17.7.1 General |
@@ -261,6 +261,6 @@ triggerable by a portable unit test):
 | W18 | `atomic_notify(max=0)` wording vs code mismatch | Low | 7.17.7.11; `atomic_wait_common.ipp.ipp:764-767` |
 | W19 | restrict qualifiers deviate from clause style | Low | 7.17.7.10/11 |
 | W20–W22 | memcmp NOTE, waiter-lifetime NOTE, abstract-machine polish | Low | various |
-| 1.4 | Store/exchange wakeups absent on fallback path | Medium | NOTE 1 |
+| 1.4 | Store/exchange race clarified; parked waiters still require notify | Resolved | 7.17.7.1 NOTE 2 |
 | §2 | macOS `__ulock_wait` 0==infinite implicit contract; 4-byte hard-code assumption | Low (portability) | `atomic_wait_macos.c.ipp:59-69`; `atomic_wait.h:76-89` |
 | §3 | pthreads-on-Windows / Win32-x86 never CI-tested (header-only+pthreads now covered) | Medium (risk) | `.github/workflows/ci.yml` |

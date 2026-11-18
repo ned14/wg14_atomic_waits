@@ -13,6 +13,19 @@ add_code_test(atomic_wait_race_test SOURCES
               "atomic_wait_race_test.c" FEATURES c_std_11)
 add_code_test(wait_expected_leak_test SOURCES
               "wait_expected_leak_test.c" FEATURES c_std_11)
+add_code_test(no_atomic_wait_timeout_test SOURCES
+              "no_atomic_wait_timeout_test.c" FEATURES c_std_11)
+if(NOT WIN32 AND NOT ALWAYS_USE_PTHREADS_BACKEND
+   AND NOT CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+  add_code_test(freestanding_no_timeout_test SOURCES
+                "freestanding_no_timeout_test.c" FEATURES c_std_11)
+  target_include_directories(freestanding_no_timeout_test BEFORE PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/freestanding_stubs")
+endif()
+add_test(NAME freestanding_public_headers
+         COMMAND ${CMAKE_COMMAND}
+           -DHEADER_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../include
+           -P ${CMAKE_CURRENT_SOURCE_DIR}/check_freestanding_headers.cmake)
 add_code_test(hash_table_whitebox_test SOURCES
               "hash_table_whitebox_test.c" FEATURES c_std_11)
 # POSIX-only white-box test of the pthreads backend's wake-token accounting

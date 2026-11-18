@@ -22,9 +22,12 @@ limitations under the License.
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+#include <stdio.h>
+#include <time.h>
+#endif
 
 #ifndef WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE
 #if !WG14_ATOMIC_WAITS_HAVE_WAIT_ON_ADDRESS_32
@@ -455,8 +458,9 @@ extern "C"
   }
 
 
-  static WG14_ATOMIC_WAITS_INLINE void
-  WG14_ATOMIC_WAITS_PREFIX(monotonic_now)(struct timespec *ts)
+#if !WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+  static WG14_ATOMIC_WAITS_INLINE
+  uint_least64_t WG14_ATOMIC_WAITS_PREFIX(monotonic_now_ns)(void)
   {
 #if defined(_WIN32) || defined(_WIN64)
     // MSVC's CRT provides neither clock_gettime nor CLOCK_MONOTONIC, so use
@@ -473,28 +477,73 @@ extern "C"
     }
     LARGE_INTEGER count;
     QueryPerformanceCounter(&count);
-    ts->tv_sec = (time_t) (count.QuadPart / freq.QuadPart);
-    ts->tv_nsec =
-    (long) (((count.QuadPart % freq.QuadPart) * 1000000000L) / freq.QuadPart);
+    const uint_least64_t f = (uint_least64_t) freq.QuadPart;
+    const uint_least64_t c = (uint_least64_t) count.QuadPart;
+    const uint_least64_t secs = c / f;
+    const uint_least64_t rem = c % f;
+    return secs * 1000000000ull + (rem * 1000000000ull) / f;
 #else
-  // CLOCK_MONOTONIC is POSIX.1-2001 and present on every supported platform.
-  // If it is declared but fails at runtime the platform is broken and every
-  // wait duration would be silently wrong, so fail loudly with a diagnostic
-  // instead (analysis §1.9).
-  if(clock_gettime(CLOCK_MONOTONIC, ts) != 0)
-  {
-    fprintf(stderr,
-            "wg14_atomic_waits: clock_gettime(CLOCK_MONOTONIC, &ts) failed: "
-            "%s\n",
-            strerror(errno));
-    abort();
-  }
+    // CLOCK_MONOTONIC is POSIX.1-2001 and present on every supported platform.
+    // If it is declared but fails at runtime the platform is broken and every
+    // wait duration would be silently wrong, so fail loudly with a diagnostic
+    // instead (analysis §1.9).
+    struct timespec ts;
+    if(clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+    {
+      fprintf(stderr,
+              "wg14_atomic_waits: clock_gettime(CLOCK_MONOTONIC, ...) failed: "
+              "%s\n",
+              strerror(errno));
+      abort();
+    }
+    return (uint_least64_t) ts.tv_sec * 1000000000ull +
+           (uint_least64_t) ts.tv_nsec;
 #endif
   }
 
+  static WG14_ATOMIC_WAITS_INLINE uint_least64_t
+  WG14_ATOMIC_WAITS_PREFIX(deadline_from_duration)(uint_least64_t duration_ns)
+  {
+    const uint_least64_t now = WG14_ATOMIC_WAITS_PREFIX(monotonic_now_ns)();
+    const uint_least64_t deadline = now + duration_ns;
+    return (deadline < now) ? UINT_LEAST64_MAX : deadline;
+  }
+
+  static WG14_ATOMIC_WAITS_INLINE bool WG14_ATOMIC_WAITS_PREFIX(
+  remaining_before_deadline)(uint_least64_t deadline_ns,
+                             uint_least64_t *remaining_ns)
+  {
+    const uint_least64_t now = WG14_ATOMIC_WAITS_PREFIX(monotonic_now_ns)();
+    if(now >= deadline_ns)
+    {
+      return false;
+    }
+    *remaining_ns = deadline_ns - now;
+    return true;
+  }
+#endif
+
+#if WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+  static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(
+  no_timeout_duration_result)(uint_least64_t duration_ns)
+  {
+    if(duration_ns == STDC_ATOMIC_WAIT_FOREVER)
+    {
+      return 1;
+    }
+    if(duration_ns == 0)
+    {
+      errno = ETIMEDOUT;
+      return 0;
+    }
+    errno = ENOTSUP;
+    return -1;
+  }
+#endif
+
   static WG14_ATOMIC_WAITS_INLINE int WG14_ATOMIC_WAITS_PREFIX(
   atomic_wait_generic)(const volatile void *object, size_t bytes,
-                       void *expected, const struct timespec *duration,
+                       void *expected, uint_least64_t duration_ns,
                        WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order success,
                        WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order failure)
   {
@@ -505,19 +554,12 @@ extern "C"
     // loop itself deliberately set (timeout or hard error).
     const int entry_errno = errno;
     bool errno_is_set = false;
-    struct timespec end = {0, 0};
-    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
-    {
-      struct timespec now;
-      WG14_ATOMIC_WAITS_PREFIX(monotonic_now)(&now);
-      end.tv_sec = now.tv_sec + duration->tv_sec;
-      end.tv_nsec = now.tv_nsec + duration->tv_nsec;
-      if(end.tv_nsec >= 1000000000)
-      {
-        end.tv_sec++;
-        end.tv_nsec -= 1000000000;
-      }
-    }
+#if !WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+    const uint_least64_t deadline_ns =
+    duration_ns == STDC_ATOMIC_WAIT_FOREVER ?
+    0 :
+    WG14_ATOMIC_WAITS_PREFIX(deadline_from_duration)(duration_ns);
+#endif
     WG14_ATOMIC_WAITS_PREFIX(hash_table_t) *const table =
     &WG14_ATOMIC_WAITS_PREFIX(shared_global_hash_table);
     WG14_ATOMIC_WAITS_PREFIX(proxy_waiter_t) *item = WG14_ATOMIC_WAITS_NULLPTR;
@@ -553,6 +595,16 @@ extern "C"
         }
         break;
       }
+#if WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+      const int no_timeout_result =
+      WG14_ATOMIC_WAITS_PREFIX(no_timeout_duration_result)(duration_ns);
+      if(no_timeout_result <= 0)
+      {
+        ret = no_timeout_result;
+        errno_is_set = true;
+        break;
+      }
+#endif
       if(item == WG14_ATOMIC_WAITS_NULLPTR)
       {
         WG14_ATOMIC_WAITS_PREFIX(hash_table_lock)(table);
@@ -588,13 +640,13 @@ extern "C"
         ret = 1;  // return that we did enter a wait cycle
       }
 
-      struct timespec ts_remaining;
-      if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+      const uint_least64_t *remaining_ptr = WG14_ATOMIC_WAITS_NULLPTR;
+#if !WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+      uint_least64_t remaining_ns = 0;
+      if(duration_ns != STDC_ATOMIC_WAIT_FOREVER)
       {
-        struct timespec now;
-        WG14_ATOMIC_WAITS_PREFIX(monotonic_now)(&now);
-        if(now.tv_sec > end.tv_sec ||
-           (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
+        if(!WG14_ATOMIC_WAITS_PREFIX(remaining_before_deadline)(deadline_ns,
+                                                                &remaining_ns))
         {
           // Duration timeout: fall through to the common tail below so the
           // proxy node we created is released (analysis §1.3), then return 0.
@@ -603,19 +655,11 @@ extern "C"
           ret = 0;
           break;
         }
-        ts_remaining.tv_sec = end.tv_sec - now.tv_sec;
-        if(end.tv_nsec >= now.tv_nsec)
-          ts_remaining.tv_nsec = end.tv_nsec - now.tv_nsec;
-        else
-        {
-          ts_remaining.tv_sec--;
-          ts_remaining.tv_nsec = end.tv_nsec - now.tv_nsec + 1000000000;
-        }
+        remaining_ptr = &remaining_ns;
       }
+#endif
       const int ret2 = WG14_ATOMIC_WAITS_HASH_TABLE_ITEM_PROXY_TYPE_WAIT(
-      item, item_counter,
-      (duration != WG14_ATOMIC_WAITS_NULLPTR) ? &ts_remaining :
-                                                WG14_ATOMIC_WAITS_NULLPTR);
+      item, item_counter, remaining_ptr);
       if(ret2 < 0 && ret2 != -EAGAIN && ret2 != -EINTR && ret2 != -ETIMEDOUT)
       {
         // Hard wait error: fall through to the common tail below so the proxy
@@ -687,7 +731,7 @@ extern "C"
     }
 #else
   (void) WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-  object, 1, &expected, WG14_ATOMIC_WAITS_NULLPTR, order, order);
+  object, 1, &expected, STDC_ATOMIC_WAIT_FOREVER, order, order);
 #endif
   }
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_2)(
@@ -703,7 +747,7 @@ extern "C"
     }
 #else
   (void) WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-  object, 2, &expected, WG14_ATOMIC_WAITS_NULLPTR, order, order);
+  object, 2, &expected, STDC_ATOMIC_WAIT_FOREVER, order, order);
 #endif
   }
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_4)(
@@ -719,7 +763,7 @@ extern "C"
     }
 #else
   (void) WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-  object, 4, &expected, WG14_ATOMIC_WAITS_NULLPTR, order, order);
+  object, 4, &expected, STDC_ATOMIC_WAIT_FOREVER, order, order);
 #endif
   }
   void WG14_ATOMIC_WAITS_PREFIX(atomic_wait_8)(
@@ -735,7 +779,7 @@ extern "C"
     }
 #else
   (void) WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-  object, 8, &expected, WG14_ATOMIC_WAITS_NULLPTR, order, order);
+  object, 8, &expected, STDC_ATOMIC_WAIT_FOREVER, order, order);
 #endif
   }
 
@@ -816,8 +860,7 @@ extern "C"
   int WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected_32)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t
   *__restrict object,
-  uint_least32_t *__restrict expected,
-  const struct timespec *__restrict duration,
+  uint_least32_t *__restrict expected, uint_least64_t duration_ns,
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order success,
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order failure)
   {
@@ -827,19 +870,12 @@ extern "C"
     // itself (wait_on_address32) preserves it, so only restore the entry value
     // on the success exit; the timeout and hard-error exits set their own.
     const int entry_errno = errno;
-    struct timespec end = {0, 0};
-    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
-    {
-      struct timespec now;
-      WG14_ATOMIC_WAITS_PREFIX(monotonic_now)(&now);
-      end.tv_sec = now.tv_sec + duration->tv_sec;
-      end.tv_nsec = now.tv_nsec + duration->tv_nsec;
-      if(end.tv_nsec >= 1000000000)
-      {
-        end.tv_sec++;
-        end.tv_nsec -= 1000000000;
-      }
-    }
+#if !WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+    const uint_least64_t deadline_ns =
+    duration_ns == STDC_ATOMIC_WAIT_FOREVER ?
+    0 :
+    WG14_ATOMIC_WAITS_PREFIX(deadline_from_duration)(duration_ns);
+#endif
     for(;;)
     {
       uint_least32_t current =
@@ -858,37 +894,38 @@ extern "C"
           // current may have changed since the previous atomic load and this
           // atomic load and then we would be returning not the value which
           // caused the wait to exit, which would break our API contract.
-          WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object, success);
+          (void) WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_load_explicit(object,
+                                                                      success);
         }
         errno = entry_errno;
         return ret;
       }
+#if WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+      const int no_timeout_result =
+      WG14_ATOMIC_WAITS_PREFIX(no_timeout_duration_result)(duration_ns);
+      if(no_timeout_result <= 0)
+      {
+        return no_timeout_result;
+      }
+#endif
       ret = 1;
 
-      struct timespec ts_remaining;
-      if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+      const uint_least64_t *remaining_ptr = WG14_ATOMIC_WAITS_NULLPTR;
+#if !WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+      uint_least64_t remaining_ns = 0;
+      if(duration_ns != STDC_ATOMIC_WAIT_FOREVER)
       {
-        struct timespec now;
-        WG14_ATOMIC_WAITS_PREFIX(monotonic_now)(&now);
-        if(now.tv_sec > end.tv_sec ||
-           (now.tv_sec == end.tv_sec && now.tv_nsec >= end.tv_nsec))
+        if(!WG14_ATOMIC_WAITS_PREFIX(remaining_before_deadline)(deadline_ns,
+                                                                &remaining_ns))
         {
           errno = ETIMEDOUT;
           return 0;
         }
-        ts_remaining.tv_sec = end.tv_sec - now.tv_sec;
-        if(end.tv_nsec >= now.tv_nsec)
-          ts_remaining.tv_nsec = end.tv_nsec - now.tv_nsec;
-        else
-        {
-          ts_remaining.tv_sec--;
-          ts_remaining.tv_nsec = end.tv_nsec - now.tv_nsec + 1000000000;
-        }
+        remaining_ptr = &remaining_ns;
       }
+#endif
       const int ret2 = WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(
-      object, *expected,
-      (duration != WG14_ATOMIC_WAITS_NULLPTR) ? &ts_remaining :
-                                                WG14_ATOMIC_WAITS_NULLPTR);
+      object, *expected, remaining_ptr);
       if(ret2 < 0 && ret2 != -EAGAIN && ret2 != -EINTR && ret2 != -ETIMEDOUT)
       {
         errno = -ret2;
@@ -897,7 +934,7 @@ extern "C"
     }
 #else
   return WG14_ATOMIC_WAITS_PREFIX(atomic_wait_generic)(
-  object, 4, expected, duration, success, failure);
+  object, 4, expected, duration_ns, success, failure);
 #endif
   }
 

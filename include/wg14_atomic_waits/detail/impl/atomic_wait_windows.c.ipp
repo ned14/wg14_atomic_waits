@@ -58,15 +58,24 @@ extern "C"
   {
     switch(lasterr)
     {
-    case ERROR_SUCCESS: return 0;
-    case ERROR_TIMEOUT: return ETIMEDOUT;
-    case ERROR_INVALID_PARAMETER: return EINVAL;
-    case ERROR_NOT_ENOUGH_MEMORY: return ENOMEM;
-    case ERROR_OUTOFMEMORY: return ENOMEM;
-    case ERROR_ACCESS_DENIED: return EACCES;
-    case ERROR_INVALID_HANDLE: return EBADF;
-    case ERROR_NO_SYSTEM_RESOURCES: return EAGAIN;
-    default: return EIO;
+    case ERROR_SUCCESS:
+      return 0;
+    case ERROR_TIMEOUT:
+      return ETIMEDOUT;
+    case ERROR_INVALID_PARAMETER:
+      return EINVAL;
+    case ERROR_NOT_ENOUGH_MEMORY:
+      return ENOMEM;
+    case ERROR_OUTOFMEMORY:
+      return ENOMEM;
+    case ERROR_ACCESS_DENIED:
+      return EACCES;
+    case ERROR_INVALID_HANDLE:
+      return EBADF;
+    case ERROR_NO_SYSTEM_RESOURCES:
+      return EAGAIN;
+    default:
+      return EIO;
     }
   }
 
@@ -75,13 +84,13 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address8)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least8_t *object,
-  uint_least8_t expected, const struct timespec *duration)
+  uint_least8_t expected, const uint_least64_t *timeout_ns)
   {
     DWORD timeout_ms = INFINITE;
-    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+    if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
     {
-      ULONGLONG ms = (ULONGLONG) duration->tv_sec * 1000ull +
-                     (duration->tv_nsec + 999999ull) / 1000000ull;
+      ULONGLONG ms = (ULONGLONG) (*timeout_ns / 1000000ull +
+                                  ((*timeout_ns % 1000000ull) != 0ull));
       timeout_ms = (ms >= 0xFFFFFFFEull) ? (DWORD) 0xFFFFFFFE : (DWORD) ms;
     }
     if(WaitOnAddress((PVOID) (uintptr_t) object, &expected, 1, timeout_ms))
@@ -98,13 +107,13 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address16)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least16_t *object,
-  uint_least16_t expected, const struct timespec *duration)
+  uint_least16_t expected, const uint_least64_t *timeout_ns)
   {
     DWORD timeout_ms = INFINITE;
-    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+    if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
     {
-      ULONGLONG ms = (ULONGLONG) duration->tv_sec * 1000ull +
-                     (duration->tv_nsec + 999999ull) / 1000000ull;
+      ULONGLONG ms = (ULONGLONG) (*timeout_ns / 1000000ull +
+                                  ((*timeout_ns % 1000000ull) != 0ull));
       timeout_ms = (ms >= 0xFFFFFFFEull) ? (DWORD) 0xFFFFFFFE : (DWORD) ms;
     }
     if(WaitOnAddress((PVOID) (uintptr_t) object, &expected, 2, timeout_ms))
@@ -121,13 +130,13 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address32)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least32_t *object,
-  uint_least32_t expected, const struct timespec *duration)
+  uint_least32_t expected, const uint_least64_t *timeout_ns)
   {
     DWORD timeout_ms = INFINITE;
-    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+    if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
     {
-      ULONGLONG ms = (ULONGLONG) duration->tv_sec * 1000ull +
-                     (duration->tv_nsec + 999999ull) / 1000000ull;
+      ULONGLONG ms = (ULONGLONG) (*timeout_ns / 1000000ull +
+                                  ((*timeout_ns % 1000000ull) != 0ull));
       timeout_ms = (ms >= 0xFFFFFFFEull) ? (DWORD) 0xFFFFFFFE : (DWORD) ms;
     }
     if(WaitOnAddress((PVOID) (uintptr_t) object, &expected, 4, timeout_ms))
@@ -145,13 +154,13 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(wait_on_address64)(
   const volatile WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_least64_t *object,
-  uint_least64_t expected, const struct timespec *duration)
+  uint_least64_t expected, const uint_least64_t *timeout_ns)
   {
     DWORD timeout_ms = INFINITE;
-    if(duration != WG14_ATOMIC_WAITS_NULLPTR)
+    if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
     {
-      ULONGLONG ms = (ULONGLONG) duration->tv_sec * 1000ull +
-                     (duration->tv_nsec + 999999ull) / 1000000ull;
+      ULONGLONG ms = (ULONGLONG) (*timeout_ns / 1000000ull +
+                                  ((*timeout_ns % 1000000ull) != 0ull));
       timeout_ms = (ms >= 0xFFFFFFFEull) ? (DWORD) 0xFFFFFFFE : (DWORD) ms;
     }
     if(WaitOnAddress((PVOID) (uintptr_t) object, &expected, 8, timeout_ms))

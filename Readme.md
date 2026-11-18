@@ -30,7 +30,7 @@ int worker(atomic_int *value)
   WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
   value,                       // object whose value is compared and waited on
   &expected,                   // expected value; *expected is updated on return
-  NULL,                        // duration: NULL waits forever, else a timespec
+  STDC_ATOMIC_WAIT_FOREVER,    // duration_ns: no timeout
   memory_order_seq_cst,        // success order: the load that ends the wait
   memory_order_seq_cst         // failure order: the load on timeout or retry
   );
@@ -39,8 +39,8 @@ int worker(atomic_int *value)
 
 // Atomically stores *value = desired (provided it still equals *expected) and
 // wakes up to max_threads_to_wake parked waiters in a single operation.
-// Returns a positive value on success (1 + the number woken on some
-// platforms), 0 if the compare-exchange failed, or a negative error.
+// Returns a positive value on success (recommended 1 + the number woken
+// when known), 0 if the compare-exchange failed, or a negative error.
 int set_value(atomic_int *value)
 {
   int expected = 0;
@@ -114,6 +114,7 @@ Relevant CMake options:
 | `BUILD_SHARED_LIBS` | `OFF` | Build a shared library instead of a static one. |
 | `HEADER_ONLY_BUILD` | `OFF` | Header-only "unity" build; defines `WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY`. |
 | `ALWAYS_USE_PTHREADS_BACKEND` | `OFF` | Force the portable pthreads backend on every platform (also in header-only mode, via `WG14_ATOMIC_WAITS_ALWAYS_USE_PTHREADS`). |
+| `NO_ATOMIC_WAIT_TIMEOUT` | `OFF` | Omit support for non-zero finite atomic wait durations; defines `__STDC_NO_ATOMIC_WAIT_TIMEOUT__`. |
 | `BUILD_TESTING` | `ON` | Build the test suite (only when this is the top-level project). |
 | `CMAKE_C_STANDARD` | `11` | C standard; C23 (`23`) is also supported. |
 
@@ -147,19 +148,29 @@ hash-table fallback:
 
 Semantics notes:
 
+- The header defines `STDC_ATOMIC_WAIT_FOREVER` as `UINT_LEAST64_MAX`. The
+  proposed wording bumps `__STDC_VERSION_STDATOMIC_H__` to `202611L`; the
+  reference header leaves that standard macro to `<stdatomic.h>`.
 - `atomic_wait_expected` and `atomic_notify` are defined for the native 4-byte
   `uint_native_wait_notify_t` type only.
-- `duration` is a relative remaining interval measured against a monotonic
-  clock, or `NULL` for no timeout. macOS, Windows and pthreads consume it
-  directly; Linux converts it to an absolute CLOCK_MONOTONIC deadline for
-  `FUTEX_WAIT_BITSET`; FreeBSD leaves the `UMTX_ABSTIME` flag clear so the kernel
-  treats it as relative.
+- `duration_ns` is a relative interval in nanoseconds measured against an
+  implementation-defined monotonic clock, or `STDC_ATOMIC_WAIT_FOREVER` for no
+  timeout. `0` performs the initial check and returns a timed-out result if the
+  value still matches. Every backend converts the interval to its native
+  representation internally.
+- If the implementation defines `__STDC_NO_ATOMIC_WAIT_TIMEOUT__`, durations
+  other than `0` and `STDC_ATOMIC_WAIT_FOREVER` are not supported and
+  `atomic_wait_expected` returns a negative value for them. This lets very
+  small freestanding implementations provide atomics and unbounded waits
+  without a monotonic clock. The `NO_ATOMIC_WAIT_TIMEOUT` CMake option builds
+  this configuration.
 - `atomic_notify_all` always wakes every parked waiter: Windows uses
   `WakeByAddressAll`, macOS uses the wake-all flag, Linux and FreeBSD clamp the
   wake count, pthreads broadcasts.
-- `atomic_notify` returns a positive value (on some platforms 1 plus the number
-  of threads woken) on a successful exchange, `0` when the compare-exchange
-  fails, and a negative `-errno` on error.
+- `atomic_notify` returns a positive value on a successful exchange, `0` when
+  the compare-exchange fails, and a negative `-errno` on error. The recommended
+  positive value is one plus the number of threads woken when that count is
+  known; otherwise it is implementation-defined.
 
 ## Supported targets
 

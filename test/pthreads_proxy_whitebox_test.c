@@ -37,7 +37,7 @@ int pthreads_proxy_whitebox_test_main(void)
 {
   int ret = 0;
   WG14_ATOMIC_WAITS_PREFIX(wg14_pthreads_proxy_t) proxy;
-  struct timespec ts = {.tv_sec = 0, .tv_nsec = 100000000};  // 100 ms
+  uint_least64_t ts = 100000000ull;  // 100 ms
 
   // 1. Wake-all must create one token per *registered* waiter, not per parked
   //    waiter. One waiter is parked (waiting == 1); a second has registered

@@ -52,7 +52,7 @@ int main(void)
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX atomic_uint_native_wait_notify_t nv = 0;
   WG14_ATOMIC_WAITS_PREFIX(uint_native_wait_notify_t) expected = 5;
   const int r = WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-  &nv, &expected, WG14_ATOMIC_WAITS_NULLPTR, memory_order_seq_cst,
+  &nv, &expected, STDC_ATOMIC_WAIT_FOREVER, memory_order_seq_cst,
   memory_order_seq_cst);
   CHECK(r == 0);
   CHECK(expected == 0);

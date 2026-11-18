@@ -121,7 +121,7 @@ extern "C"
   static WG14_ATOMIC_WAITS_INLINE int
   WG14_ATOMIC_WAITS_PREFIX(pthread_proxy_wait)(
   WG14_ATOMIC_WAITS_PREFIX(wg14_pthreads_proxy_t) * p,
-  const struct timespec *timeout)  // relative timeout, or NULL for infinite
+  const uint_least64_t *timeout_ns)  // relative timeout, or NULL for infinite
   {
     int save_errno = errno;
     int ret = pthread_mutex_lock(&p->mutex);
@@ -139,30 +139,48 @@ extern "C"
       errno = save_errno;
       return 0;
     }
-    struct timespec abstime;
-    if(timeout != WG14_ATOMIC_WAITS_NULLPTR)
-    {
+#if WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+    (void) timeout_ns;
+#else
+  struct timespec abstime;
+  if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
+  {
 #if WG14_ATOMIC_WAITS_PTHREADS_MONOTONIC
-      (void) clock_gettime(CLOCK_MONOTONIC, &abstime);
+    (void) clock_gettime(CLOCK_MONOTONIC, &abstime);
 #else
     (void) clock_gettime(CLOCK_REALTIME, &abstime);
 #endif
-      abstime.tv_sec += timeout->tv_sec;
-      abstime.tv_nsec += timeout->tv_nsec;
-      if(abstime.tv_nsec >= 1000000000L)
-      {
-        abstime.tv_sec++;
-        abstime.tv_nsec -= 1000000000L;
-      }
+    uint_least64_t ns = (uint_least64_t) abstime.tv_sec * 1000000000ull +
+                        (uint_least64_t) abstime.tv_nsec;
+    if(*timeout_ns > UINT_LEAST64_MAX - ns)
+    {
+      ns = UINT_LEAST64_MAX;
     }
+    else
+    {
+      ns += *timeout_ns;
+    }
+    // Clamp to a conservative signed-32-bit time_t range so the conversion
+    // is safe even on 32-bit targets. Longer waits simply re-park.
+    uint_least64_t secs = ns / 1000000000ull;
+    if(secs > 0x7FFFFFFFull)
+    {
+      secs = 0x7FFFFFFFull;
+    }
+    abstime.tv_sec = (time_t) secs;
+    abstime.tv_nsec = (long) (ns % 1000000000ull);
+  }
+#endif
     p->waiting++;
     for(;;)
     {
-      if(timeout != WG14_ATOMIC_WAITS_NULLPTR)
+#if !WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+      if(timeout_ns != WG14_ATOMIC_WAITS_NULLPTR)
       {
         ret = pthread_cond_timedwait(&p->cond, &p->mutex, &abstime);
       }
       else
+#endif
       {
         ret = pthread_cond_wait(&p->cond, &p->mutex);
       }

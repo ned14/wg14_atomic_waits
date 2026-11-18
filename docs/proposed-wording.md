@@ -4,10 +4,9 @@
 |---------------------------------------------------------------------|----------------------------------------|----------------|---------------------------|
 | [N3886](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3886.pdf) | Working Draft                          |                | base for diff, 2026-05-24 |
 
-
 # Proposed Wording
 
-All changes are relative to N3886. 
+All changes are relative to N3886.
 
 ### Legend
 
@@ -29,7 +28,35 @@ Close to each other proposed changes <span style="color:
   #009E73"><u>resemble</u></span> <span style="color:
   #E69F00"><s>like</s></span> `this`.
 
+## 6.10.10.4 Conditional feature macros, p1
 
+* Append after the entry for `__STDC_NO_ATOMICS__`:
+
+> <ins>
+> `__STDC_NO_ATOMIC_WAIT_TIMEOUT__` The integer literal 1, intended to indicate that the
+> implementation does not support a non-zero finite duration in the `atomic_wait_expected`
+> generic function.
+> </ins>
+
+## 7.17.1 Introduction, p3
+
+* Amend p3 as follows:
+
+> 3   The macro
+>
+>               __STDC_VERSION_STDATOMIC_H__
+>
+>     is an integer constant expression with a value equivalent to <del>202311L</del><ins>202611L</ins>.
+
+## 7.17.1 Introduction, p4
+
+* Amend p4 by appending after the `ATOMIC_FLAG_INIT` description:
+
+>     which expands to an initializer for an object of type `atomic_flag`<del>.</del><ins>; and
+>
+>               STDC_ATOMIC_WAIT_FOREVER
+>
+>     which expands to `UINT_LEAST64_MAX`.</ins>
 
 ## 7.17.1 Introduction, p5
 
@@ -42,14 +69,14 @@ Close to each other proposed changes <span style="color:
 >     *N* is at least 32, for which atomic waiting and notifying operations have the least overhead
 >     on this implementation; and several atomic analogs</ins> of integer types.
 
-## To 7.17.6 Atomic integer types, p1, Table 7.6, append the row
+## 7.17.6 Atomic integer types, p1, Table 7.6
 
 | Type name                               | C type                                |
 |-----------------------------------------|---------------------------------------|
 | `atomic_uintmax_t`                      | `_Atomic uintmax_t`                   |
 | <ins>`atomic_uint_native_wait_notify_t`</ins> | <ins>`_Atomic uint_native_wait_notify_t`</ins> |
 
-## To 7.17.7.1 General, append:
+## 7.17.7.1 General, append
 
 > 1   This subclause describes several generic functions that operate on all atomic types other than
 >     `atomic_flag`. Also, 7.17.7.6 provides such generic functions for some read-modify-write
@@ -59,14 +86,37 @@ Close to each other proposed changes <span style="color:
 > <ins>
 > 2   The atomic_wait, atomic_wait_explicit, and atomic_wait_expected generic functions are
 >     *waiting operations*, and the atomic_notify_one, atomic_notify_all, and atomic_notify generic
->     functions are *notifying operations*. The execution of a waiting operation on an atomic object
->     *M* can block the calling thread, in which case the thread is *blocked on M*. A thread blocked
->     on *M* becomes unblocked when it is *woken up*. A wakeup can be caused by a notifying operation
->     on *M* and can also occur for other reasons.
+>     functions are *notifying operations*. A waiting operation on an atomic object *M* may block
+>     the calling thread, in which case the thread is *blocked on M*. A thread blocked on *M*
+>     becomes unblocked when it is *woken up*. A wakeup can be caused by a notifying operation on
+>     *M* or can occur spuriously.
+>
+> 3   A call to a waiting operation on an atomic object *M* is eligible to be unblocked by a call to
+>     a notifying operation on *M* if there exist side effects *X* and *Y* on *M* such that:
+>
+>     — the waiting operation has blocked after observing the result of *X*,
+>
+>     — *X* precedes *Y* in the modification order of *M*, and
+>
+>     — *Y* happens before the call to the notifying operation.
+>
+> 4   All side effects to the atomic object *M* that happen before a call *N* to a notifying
+>     operation on *M* synchronize with the completion of any waiting operation *W* on *M* that is
+>     unblocked by *N*.
+>
+> 5   NOTE 1 Programs are not guaranteed to observe transient atomic values, an issue known as the
+>     A-B-A problem, resulting in continued blocking if a condition is only temporarily met.
+>
+> 6   NOTE 2 A waiting operation can return because it observes a value that differs from the
+>     expected value without being unblocked by a notifying operation, for example when a store or
+>     exchange to the atomic object occurs before the calling thread blocks. A store or exchange
+>     alone is not sufficient to reliably unblock a thread that is already blocked on the atomic
+>     object; a subsequent notifying operation is required to ensure that the thread is unblocked.
 > </ins>
 
 The following new subsections are inserted after 7.17.7.6 and before 7.17.8, and are numbered
-7.17.7.7 through 7.17.7.11. The last paragraph of 7.17.7.6 is:
+7.17.7.7 through 7.17.7.11. Because these subsections are entirely new, they are shown in full
+without further change markup. The last paragraph of 7.17.7.6 is:
 
 > **Returns**
 >
@@ -74,9 +124,9 @@ The following new subsections are inserted after 7.17.7.6 and before 7.17.8, and
 
 ## 7.17.7.7 The atomic_wait generic functions
 
-<ins>
+**Synopsis**
 
-### Synopsis
+1
 
 ```
 #include <stdatomic.h>
@@ -84,134 +134,162 @@ void atomic_wait(const volatile A *object, C expected);
 void atomic_wait_explicit(const volatile A *object, C expected, memory_order order);
 ```
 
-### Description
+**Description**
 
-1   Atomically checks the value pointed to by *object* as if by atomic_load(*object*) or
-    atomic_load_explicit(*object*, *order*), respectively, and determines whether it compares equal to
-    *expected* as if by the memcmp function. If it does not, the function returns immediately.
-    Otherwise, the calling thread is blocked on the atomic object pointed to by *object* until it is
-    woken up; if, when woken up, the value still compares equal to *expected*, the thread is blocked
-    again.
+2   The `order` argument shall not be `memory_order_release` nor `memory_order_acq_rel`.
 
-2   NOTE 1 A wakeup can be triggered by a notifying operation on *object* or by an atomic store or
-    exchange to *object*.
+3   The atomic object pointed to by `object` is denoted by *M*. The atomic_wait generic function is
+    equivalent to the atomic_wait_explicit generic function with an `order` argument of
+    `memory_order_seq_cst`.
 
-3   All side effects to the atomic object *M* that happen before a call *N* to a notifying operation on
-    *M* synchronize with the completion of any waiting operation *W* on *M* that is unblocked by *N*.
+4   The atomic_wait_explicit generic function repeatedly performs the following steps, in order:
 
-</ins>
+    — evaluates `atomic_load_explicit(object, order)` and compares its value for equality with
+      `expected`, as if by the `memcmp` function;
 
-## 7.17.7.8 The atomic_notify_one generic functions
+    — if the values compare unequal, returns;
 
-<ins>
+    — blocks until it is unblocked by a notifying operation or is unblocked spuriously.
 
-### Synopsis
+**Returns**
+
+5   The atomic_wait and atomic_wait_explicit generic functions return no value.
+
+## 7.17.7.8 The atomic_notify_one generic function
+
+**Synopsis**
+
+1
 
 ```
 #include <stdatomic.h>
 void atomic_notify_one(volatile A *object);
 ```
 
-### Description
+**Description**
 
-1   If prior to the call a thread has been blocked on the atomic object pointed to by *object* in a
-    waiting operation and has not yet been woken up, at least one such thread is woken up,
-    synchronizing as described in 7.17.7.7.
+2   The atomic_notify_one generic function unblocks at least one waiting operation on the atomic
+    object pointed to by `object` that is eligible to be unblocked by this call, if any such
+    waiting operation exists.
 
-</ins>
+**Returns**
 
-## 7.17.7.9 The atomic_notify_all generic functions
+3   The atomic_notify_one generic function returns no value.
 
-<ins>
+## 7.17.7.9 The atomic_notify_all generic function
 
-### Synopsis
+**Synopsis**
+
+1
 
 ```
 #include <stdatomic.h>
 void atomic_notify_all(volatile A *object);
 ```
 
-### Description
+**Description**
 
-1   If prior to the call threads have been blocked on the atomic object pointed to by *object* in
-    waiting operations and have not yet been woken up, all such threads are woken up, synchronizing as
-    described in 7.17.7.7.
+2   The atomic_notify_all generic function unblocks all waiting operations on the atomic object
+    pointed to by `object` that are eligible to be unblocked by this call.
 
-</ins>
+**Returns**
 
-## 7.17.7.10 The atomic_wait_expected generic functions
+3   The atomic_notify_all generic function returns no value.
 
-<ins>
+## 7.17.7.10 The atomic_wait_expected generic function
 
-### Synopsis
+**Synopsis**
+
+1
 
 ```
 #include <stdatomic.h>
 int atomic_wait_expected(const volatile A *restrict object, C *restrict expected,
-                         const struct timespec *restrict duration,
-                         memory_order success, memory_order failure);
+                         uint_least64_t duration_ns, memory_order success,
+                         memory_order failure);
 ```
 
-### Description
+**Description**
 
-1   The sizeof(C) shall equal the sizeof(uint_native_wait_notify_t).
+2   The value of `sizeof(C)` shall equal the value of `sizeof(uint_native_wait_notify_t)`.
 
-2   Atomically checks the value pointed to by *object* and determines whether it compares equal to
-    *\*expected* as if by the memcmp function. If it does not, the function returns immediately.
-    Otherwise, the calling thread is blocked on the atomic object pointed to by *object* until it is
-    woken up; if, when woken up, the value still compares equal to the initial value of *\*expected*,
-    the thread is blocked again.
+3   The `success` argument shall not be `memory_order_release` nor `memory_order_acq_rel`. The
+    `failure` argument shall not be `memory_order_release` nor `memory_order_acq_rel`.
 
-3   NOTE 1 A wakeup can be triggered by a notifying operation on *object* or by an atomic store or
-    exchange to *object*.
+4   The atomic object pointed to by `object` is denoted by *M*. Atomically, the value pointed to
+    by `object` is compared for equality with the value pointed to by `expected`, as if by the
+    `memcmp` function. If the values do not compare equal, the function updates the contents of the
+    memory pointed to by `expected` with that pointed to by `object`, and memory is affected
+    according to the value of `failure`. Otherwise, unless `duration_ns` is zero, the calling
+    thread is blocked on *M* until it is woken up. If, when woken up, the value still compares
+    equal to the value pointed to by `expected` on entry, the thread is blocked again.
+    Otherwise, the function updates the contents of the memory pointed to by `expected` with the
+    value pointed to by `object`, and memory is affected according to the value of `success`.
 
-4   The total accumulated time during which the calling thread is blocked in this function shall be at
-    least the interval pointed to by *duration* if *duration* is not a null pointer; after that time
-    has elapsed, a timed-out result is returned as soon as is convenient. If *duration* is a null
-    pointer, there are no time limits on when this function returns.
+5   If `duration_ns` is neither zero nor `STDC_ATOMIC_WAIT_FOREVER`, the function shall not return
+    because the interval elapsed until the total accumulated time during which the calling thread
+    is suspended in this function is at least `duration_ns` nanoseconds, as measured by an
+    implementation-defined monotonic time base. The suspension time can be longer than requested
+    because the interval is rounded up to an integer multiple of the wait resolution or because of
+    the scheduling of other activity by the system, but, except when the request cannot be honored,
+    will not be less than that specified. After that time has elapsed, the function returns and
+    memory is affected according to the value of `failure`.
 
-5   All side effects to the atomic object *M* that happen before a call *N* to a notifying operation on
-    *M* synchronize with the completion of any waiting operation *W* on *M* that is unblocked by *N*.
+6   If `duration_ns` is `STDC_ATOMIC_WAIT_FOREVER`, there is no time limit on when the function
+    returns.
 
-### Returns
+7   If the values compare equal and `__STDC_NO_ATOMIC_WAIT_TIMEOUT__` is defined and `duration_ns`
+    is neither zero nor `STDC_ATOMIC_WAIT_FOREVER`, the function does not suspend the calling
+    thread.
 
-1   If the function returned immediately because the value did not compare equal to *\*expected*, or if
-    a timed-out result is returned, the function returns zero and memory is affected according to the
-    value of *failure*. If the calling thread was blocked at least once, the function returns a
-    positive number and memory is affected according to the value of *success*. If the request could
-    not be honored, the function returns a negative value.
+**Returns**
 
-2   In all cases, on return *\*expected* contains the value of *\*object* that caused the wait to exit;
-    if a timed-out result is returned, *\*expected* is the same as on entry.
+8   If the function returns because the values did not compare equal, or because the interval
+    elapsed, the function returns zero. If the function returns because the value was no longer
+    equal to the value pointed to by `expected` on entry after the calling thread was suspended,
+    the function returns an implementation-defined positive value. If the request could not be
+    honored, including an unsupported non-zero finite `duration_ns`, the function returns a
+    negative value.
 
-</ins>
+9   On return, if the function returns zero because the values did not compare equal, or if it
+    returns a positive value, the object pointed to by `expected` contains the value that caused
+    the function to return; otherwise, it is unchanged.
 
-## 7.17.7.11 The atomic_notify generic functions
+## 7.17.7.11 The atomic_notify generic function
 
-<ins>
+**Synopsis**
 
-### Synopsis
+1
 
 ```
 #include <stdatomic.h>
 int atomic_notify(volatile A *restrict object, C *restrict expected, C desired,
-                  unsigned max_threads_to_wake, memory_order success, memory_order failure);
+                  unsigned max_threads_to_wake, memory_order success,
+                  memory_order failure);
 ```
 
-### Description
+**Description**
 
-1   The sizeof(C) shall equal the sizeof(uint_native_wait_notify_t).
+2   The value of `sizeof(C)` shall equal the value of `sizeof(uint_native_wait_notify_t)`.
 
-2   Performs as if by
-    atomic_compare_exchange_strong_explicit(*object*, *expected*, *desired*, *success*, *failure*).
-    If the result of that comparison is true, unblocks at least *max_threads_to_wake* threads that are
-    blocked on the atomic object pointed to by *object* in waiting operations.
+3   The `failure` argument shall not be `memory_order_release` nor `memory_order_acq_rel`. The
+    `failure` argument shall not impose more constraints on the operation than the `success`
+    argument.
 
-### Returns
+4   The atomic_notify generic function performs as if by
+    `atomic_compare_exchange_strong_explicit(object, expected, desired, success, failure)`. If the
+    result of the comparison is true, the function unblocks `max_threads_to_wake` threads that are
+    blocked on the atomic object pointed to by `object` in waiting operations, or all such threads
+    if fewer than `max_threads_to_wake` are blocked. If `max_threads_to_wake` is zero, no threads
+    are unblocked.
 
-1   If the exchange was performed, returns a positive number, possibly one plus the number of threads
-    woken, and memory is affected according to the value of *success*. If the result of the comparison
-    was false, returns zero and memory is affected according to the value of *failure*. If the request
-    could not be honored, the function returns a negative value.
+**Returns**
 
-</ins>
+5   If the comparison is true and the request is otherwise honored, the function returns an
+    implementation-defined positive value. If the comparison is false, the function returns zero.
+    If the request could not be honored, the function returns a negative value.
+
+**Recommended practice**
+
+6   If the number of threads unblocked by the call is known, the function should return one plus
+    that number.

@@ -13,7 +13,7 @@ static uint_least32_t expected = 0;
 void atomic_wait_expected_badtype_test(void)
 {
   WG14_ATOMIC_WAITS_PREFIX(atomic_wait_expected)(
-  &obj8, &expected, WG14_ATOMIC_WAITS_NULLPTR,
+  &obj8, &expected, STDC_ATOMIC_WAIT_FOREVER,
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst,
   WG14_ATOMIC_WAITS_ATOMIC_PREFIX memory_order_seq_cst);
 }

@@ -67,6 +67,23 @@ limitations under the License.
 #define WG14_ATOMIC_WAITS_ENABLE_HEADER_ONLY 0
 #endif
 
+// Set to 1 to omit support for non-zero, non-infinite atomic wait durations.
+// This lets very small freestanding implementations provide atomics and
+// unbounded waits without providing a monotonic clock or timer.
+#if defined(__STDC_NO_ATOMIC_WAIT_TIMEOUT__) &&                                \
+!defined(WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT)
+#define WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT 1
+#endif
+#ifndef WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+#define WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT 0
+#endif
+
+#if WG14_ATOMIC_WAITS_NO_ATOMIC_WAIT_TIMEOUT
+#ifndef __STDC_NO_ATOMIC_WAIT_TIMEOUT__
+#define __STDC_NO_ATOMIC_WAIT_TIMEOUT__ 1
+#endif
+#endif
+
 // Forces the portable pthreads backend in header-only mode instead of the
 // native platform backend. The CMake ALWAYS_USE_PTHREADS_BACKEND option defines
 // this for both the library and its consumers; a pure header-only user can also
