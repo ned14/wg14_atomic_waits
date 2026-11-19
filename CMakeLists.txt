@@ -153,6 +153,10 @@ install(DIRECTORY include/wg14_atomic_waits
 # check_required_components() helper the config template calls and keeps the
 # config relocatable; write_basic_package_version_file makes versioned
 # find_package(wg14_atomic_waits N.N) requests work.
+if(SPIN_BACKEND_YIELD)
+  set(PROJECT_PACKAGE_DEPENDENCIES
+      "include(CMakeFindDependencyMacro)\nfind_dependency(Threads)")
+endif()
 configure_package_config_file(
   "${CMAKE_CURRENT_LIST_DIR}/cmake/ProjectConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
